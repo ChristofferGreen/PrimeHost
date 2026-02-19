@@ -1,0 +1,10 @@
+PathSpaceOrig/
+.cache
+build/
+build_*/
+build-*/
+workspaces/
+*.profraw
+compile_commands.json
+screenshots/
+.DS_Store
