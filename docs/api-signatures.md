@@ -286,6 +286,12 @@ public:
   virtual HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
+  virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,
+                                           int32_t x,
+                                           int32_t y,
+                                           int32_t width,
+                                           int32_t height) = 0;
+  virtual HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) = 0;
 
   virtual HostStatus setCallbacks(Callbacks callbacks) = 0;
 };

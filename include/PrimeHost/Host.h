@@ -350,6 +350,7 @@ public:
                                            int32_t y,
                                            int32_t width,
                                            int32_t height) = 0;
+  virtual HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) = 0;
 
   virtual HostStatus setCallbacks(Callbacks callbacks) = 0;
 };

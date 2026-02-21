@@ -57,6 +57,7 @@ ph_require_cxx23(PrimeHost)
 if(APPLE)
   find_library(COCOA_LIBRARY Cocoa)
   find_library(GAMECONTROLLER_LIBRARY GameController)
+  find_library(COREGRAPHICS_LIBRARY CoreGraphics)
   find_library(METAL_LIBRARY Metal)
   find_library(AUDIOTOOLBOX_LIBRARY AudioToolbox)
   find_library(AUDIOUNIT_LIBRARY AudioUnit)
@@ -66,6 +67,7 @@ if(APPLE)
   target_link_libraries(PrimeHost PRIVATE
     ${COCOA_LIBRARY}
     ${GAMECONTROLLER_LIBRARY}
+    ${COREGRAPHICS_LIBRARY}
     ${METAL_LIBRARY}
     ${AUDIOTOOLBOX_LIBRARY}
     ${AUDIOUNIT_LIBRARY}

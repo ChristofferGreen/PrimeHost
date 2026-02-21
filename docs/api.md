@@ -75,6 +75,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Pointer Lock / Capture (Draft)
 - Relative pointer mode and explicit capture/lock controls.
 - Default: pointer lock disabled.
+- API: `setRelativePointerCapture(surfaceId, enabled)`.
 
 ## Clipboard Formats (Draft)
 - Text, file paths, and image data where supported.

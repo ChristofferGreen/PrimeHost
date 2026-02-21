@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <CoreVideo/CoreVideo.h>
 #import <CoreHaptics/CoreHaptics.h>
 #import <GameController/GameController.h>
@@ -251,6 +252,7 @@ public:
                                    int32_t y,
                                    int32_t width,
                                    int32_t height) override;
+  HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) override;
 
   HostStatus setCallbacks(Callbacks callbacks) override;
 
@@ -267,6 +269,7 @@ public:
   void handleGamepadDisconnected(GCController* controller);
   void enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value);
   void enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float value);
+  void releaseRelativePointer();
 
 private:
   struct QueuedEvent {
@@ -303,6 +306,8 @@ private:
   uint32_t nextDeviceId_ = 3u;
   CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
+  bool relativePointerEnabled_ = false;
+  std::optional<SurfaceId> relativePointerSurface_{};
 };
 
 } // namespace PrimeHost
@@ -632,6 +637,7 @@ HostMac::HostMac() {
 }
 
 HostMac::~HostMac() {
+  releaseRelativePointer();
   if (gamepadConnectObserver_) {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadConnectObserver_];
     gamepadConnectObserver_ = nil;
@@ -660,7 +666,7 @@ HostResult<HostCapabilities> HostMac::hostCapabilities() const {
   HostCapabilities caps{};
   caps.supportsClipboard = false;
   caps.supportsFileDialogs = false;
-  caps.supportsRelativePointer = false;
+  caps.supportsRelativePointer = true;
   caps.supportsIme = true;
   if (@available(macOS 11.0, *)) {
     caps.supportsHaptics = true;
@@ -804,6 +810,9 @@ HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
   auto it = surfaces_.find(surfaceId.value);
   if (it == surfaces_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (relativePointerEnabled_ && relativePointerSurface_ && relativePointerSurface_->value == surfaceId.value) {
+    releaseRelativePointer();
   }
   NSWindow* window = it->second->window;
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
@@ -976,6 +985,34 @@ HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
     [(PHHostView*)surface->view setImeRect:rect];
     [[surface->view inputContext] invalidateCharacterCoordinates];
   }
+  return {};
+}
+
+HostStatus HostMac::setRelativePointerCapture(SurfaceId surfaceId, bool enabled) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+
+  if (enabled) {
+    if (relativePointerEnabled_ && relativePointerSurface_ == surfaceId) {
+      return {};
+    }
+    if (relativePointerEnabled_) {
+      releaseRelativePointer();
+    }
+    CGAssociateMouseAndMouseCursorPosition(false);
+    CGDisplayHideCursor(kCGDirectMainDisplay);
+    relativePointerEnabled_ = true;
+    relativePointerSurface_ = surfaceId;
+    return {};
+  }
+
+  if (!relativePointerEnabled_ || relativePointerSurface_ != surfaceId) {
+    return {};
+  }
+
+  releaseRelativePointer();
   return {};
 }
 
@@ -1379,6 +1416,16 @@ void HostMac::enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float va
   enqueueEvent(std::move(event));
 }
 
+void HostMac::releaseRelativePointer() {
+  if (!relativePointerEnabled_) {
+    return;
+  }
+  CGAssociateMouseAndMouseCursorPosition(true);
+  CGDisplayShowCursor(kCGDirectMainDisplay);
+  relativePointerEnabled_ = false;
+  relativePointerSurface_.reset();
+}
+
 void HostMac::handleWindowClosed(uint64_t surfaceId) {
   Event evt{};
   evt.scope = Event::Scope::Surface;
@@ -1389,6 +1436,9 @@ void HostMac::handleWindowClosed(uint64_t surfaceId) {
 
   auto it = surfaces_.find(surfaceId);
   if (it != surfaces_.end()) {
+    if (relativePointerEnabled_ && relativePointerSurface_ && relativePointerSurface_->value == surfaceId) {
+      releaseRelativePointer();
+    }
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
     if (it->second->viewDisplayLink) {
       [it->second->viewDisplayLink invalidate];
