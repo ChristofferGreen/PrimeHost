@@ -18,6 +18,7 @@
 #include "PrimeHost/Host.h"
 #include "DeviceNameMatch.h"
 #include "FrameConfigValidation.h"
+#include "FrameConfigUtil.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
@@ -163,6 +164,16 @@ std::optional<std::pair<uint16_t, uint16_t>> hid_vidpid_match(
     }
   }
   return bestMatch;
+}
+
+void apply_layer_config(SurfaceState& surface, const SurfaceCapabilities& caps) {
+  if (!surface.layer) {
+    return;
+  }
+  uint32_t bufferCount = effectiveBufferCount(surface.frameConfig, caps);
+  if (@available(macOS 10.13, *)) {
+    surface.layer.maximumDrawableCount = static_cast<NSUInteger>(bufferCount);
+  }
 }
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {
   uint32_t result = 0u;
@@ -931,6 +942,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   [app_ activateIgnoringOtherApps:YES];
 
   auto state = std::make_unique<SurfaceState>();
+  SurfaceState* statePtr = state.get();
   state->surfaceId = surfaceId;
   state->window = window;
   state->view = view;
@@ -949,6 +961,13 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   }
 #endif
   surfaces_.emplace(surfaceId.value, std::move(state));
+
+  if (statePtr) {
+    auto caps = surfaceCapabilities(surfaceId);
+    if (caps) {
+      apply_layer_config(*statePtr, caps.value());
+    }
+  }
 
   [window makeFirstResponder:view];
 
@@ -1074,6 +1093,7 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
     return status;
   }
   surface->frameConfig = config;
+  apply_layer_config(*surface, caps.value());
   updateDisplayLinkState();
   return {};
 }
