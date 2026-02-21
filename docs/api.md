@@ -136,7 +136,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
-- `Host::requestFrame`, `setFrameConfig`, `frameConfig`
+- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 

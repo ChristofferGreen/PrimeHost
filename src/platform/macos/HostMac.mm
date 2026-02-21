@@ -333,6 +333,7 @@ public:
   HostStatus requestFrame(SurfaceId surfaceId, bool bypassCap) override;
   HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) override;
   HostResult<FrameConfig> frameConfig(SurfaceId surfaceId) const override;
+  HostResult<std::optional<std::chrono::nanoseconds>> displayInterval(SurfaceId surfaceId) const override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1112,6 +1113,17 @@ HostResult<FrameConfig> HostMac::frameConfig(SurfaceId surfaceId) const {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   return surface->frameConfig;
+}
+
+HostResult<std::optional<std::chrono::nanoseconds>> HostMac::displayInterval(SurfaceId surfaceId) const {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->displayInterval) {
+    return surface->displayInterval;
+  }
+  return displayInterval_;
 }
 
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
