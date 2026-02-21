@@ -59,6 +59,10 @@ Defaults:
 - `periodFrames = 0` uses 256 frames (clamped to `bufferFrames`).
 - `periodFrames` is clamped to `bufferFrames` when larger.
 
+Validation:
+- `format.sampleRate` must be non-zero.
+- `format.channels` must be 1-8.
+
 struct AudioDeviceInfo {
   AudioDeviceId id{};
   Utf8TextView name;
