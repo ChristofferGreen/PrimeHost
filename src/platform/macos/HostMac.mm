@@ -1,5 +1,5 @@
 #import <Cocoa/Cocoa.h>
-#import <HIToolbox/Events.h>
+#import <Carbon/Carbon.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
@@ -12,9 +12,24 @@
 #include <vector>
 
 namespace PrimeHost {
-namespace {
+class HostMac;
+} // namespace PrimeHost
 
 @class PHWindowDelegate;
+@class PHHostView;
+
+@interface PHWindowDelegate : NSObject <NSWindowDelegate>
+@property(nonatomic, assign) PrimeHost::HostMac* host;
+@property(nonatomic, assign) uint64_t surfaceId;
+@end
+
+@interface PHHostView : NSView
+@property(nonatomic, assign) PrimeHost::HostMac* host;
+@property(nonatomic, assign) uint64_t surfaceId;
+@end
+
+namespace PrimeHost {
+namespace {
 
 constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
@@ -165,17 +180,7 @@ uint32_t map_mouse_buttons(NSUInteger pressedMask) {
   return result;
 }
 
-class HostMac;
-
-@interface PHWindowDelegate : NSObject <NSWindowDelegate>
-@property(nonatomic, assign) PrimeHost::HostMac* host;
-@property(nonatomic, assign) uint64_t surfaceId;
-@end
-
-@interface PHHostView : NSView
-@property(nonatomic, assign) PrimeHost::HostMac* host;
-@property(nonatomic, assign) uint64_t surfaceId;
-@end
+} // namespace
 
 class HostMac : public Host {
 public:
@@ -218,6 +223,8 @@ private:
   Callbacks callbacks_{};
   uint64_t nextSurfaceId_ = 1u;
 };
+
+} // namespace PrimeHost
 
 @implementation PHWindowDelegate
 - (void)windowDidResize:(NSNotification*)notification {
@@ -262,56 +269,56 @@ private:
 - (void)mouseDown:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Down, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Down, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)mouseUp:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Up, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Up, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)mouseMoved:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Move, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Move, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)mouseDragged:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Move, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Move, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)rightMouseDown:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Down, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Down, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)rightMouseUp:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Up, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Up, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)otherMouseDown:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Down, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Down, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
 - (void)otherMouseUp:(NSEvent*)event {
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-    self.host->handlePointer(self.surfaceId, PointerPhase::Up, PointerDeviceType::Mouse, p, event);
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Up, PrimeHost::PointerDeviceType::Mouse, p, event);
   }
 }
 
@@ -339,6 +346,8 @@ private:
   }
 }
 @end
+
+namespace PrimeHost {
 
 HostMac::HostMac() {
   app_ = [NSApplication sharedApplication];
@@ -442,9 +451,8 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   view.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   CAMetalLayer* layer = [CAMetalLayer layer];
-  layer.device = device;
+  layer.device = MTLCreateSystemDefaultDevice();
   layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   layer.framebufferOnly = YES;
   layer.contentsScale = window.backingScaleFactor;
@@ -602,7 +610,7 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   pointer.phase = phase;
   pointer.x = static_cast<int32_t>(std::lround(point.x));
   pointer.y = static_cast<int32_t>(std::lround(point.y));
-  if (phase == PointerPhase::Move) {
+  if (phase == PrimeHost::PointerPhase::Move) {
     pointer.deltaX = static_cast<int32_t>(std::lround(event.deltaX));
     pointer.deltaY = static_cast<int32_t>(std::lround(event.deltaY));
   }
@@ -753,8 +761,6 @@ SurfaceState* HostMac::findSurface(uint64_t surfaceId) {
   }
   return &it->second;
 }
-
-} // namespace
 
 HostResult<std::unique_ptr<Host>> createHostMac() {
   return std::make_unique<HostMac>();
