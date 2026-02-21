@@ -102,6 +102,7 @@ public:
   virtual HostStatus stopStream() = 0;
   virtual HostStatus closeStream() = 0;
 
+  // Returns the active stream configuration after backend negotiation.
   virtual HostResult<AudioStreamConfig> activeConfig() const = 0;
 
   virtual HostStatus setCallbacks(AudioCallbacks callbacks) = 0;

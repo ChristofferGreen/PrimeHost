@@ -203,6 +203,32 @@ public:
     outputSampleFormat_ = config.format.format;
     bytesPerSample_ = bytesPerSample;
     scratchFrames_ = maxFrames;
+    AudioStreamBasicDescription actualFormat{};
+    UInt32 actualSize = sizeof(actualFormat);
+    if (AudioUnitGetProperty(unit_,
+                             kAudioUnitProperty_StreamFormat,
+                             kAudioUnitScope_Input,
+                             0,
+                             &actualFormat,
+                             &actualSize) == noErr) {
+      if (actualFormat.mSampleRate > 0.0) {
+        activeConfig_.format.sampleRate = static_cast<uint32_t>(actualFormat.mSampleRate);
+      }
+      const bool actualNonInterleaved =
+          (actualFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == kAudioFormatFlagIsNonInterleaved;
+      activeConfig_.format.interleaved = !actualNonInterleaved;
+      outputInterleaved_ = !actualNonInterleaved;
+      if (actualFormat.mFormatFlags & kAudioFormatFlagIsFloat) {
+        activeConfig_.format.format = SampleFormat::Float32;
+        outputSampleFormat_ = SampleFormat::Float32;
+        bytesPerSample_ = 4u;
+      } else if ((actualFormat.mFormatFlags & kAudioFormatFlagIsSignedInteger) &&
+                 actualFormat.mBitsPerChannel == 16) {
+        activeConfig_.format.format = SampleFormat::Int16;
+        outputSampleFormat_ = SampleFormat::Int16;
+        bytesPerSample_ = 2u;
+      }
+    }
     if (!outputInterleaved_ || outputSampleFormat_ != SampleFormat::Float32) {
       scratchInterleaved_.assign(static_cast<size_t>(scratchFrames_) * activeChannels_, 0.0f);
     } else {
