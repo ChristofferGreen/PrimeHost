@@ -38,4 +38,22 @@ PH_TEST("primehost.frameconfig", "defaults clamp to min") {
   PH_CHECK(resolved.bufferCount == 2u);
 }
 
+PH_TEST("primehost.frameconfig", "defaults fill capped interval") {
+  SurfaceCapabilities caps{};
+  caps.minBufferCount = 2u;
+  caps.maxBufferCount = 3u;
+
+  FrameConfig config{};
+  config.bufferCount = 0u;
+  config.presentMode = PresentMode::Smooth;
+  config.framePolicy = FramePolicy::Capped;
+  config.frameInterval.reset();
+
+  auto resolved = resolveFrameConfig(config, caps, std::chrono::milliseconds(16));
+  PH_CHECK(resolved.frameInterval.has_value());
+  if (resolved.frameInterval) {
+    PH_CHECK(resolved.frameInterval->count() > 0);
+  }
+}
+
 TEST_SUITE_END();

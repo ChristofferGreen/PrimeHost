@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <optional>
 
 #include "PrimeHost/Host.h"
 
@@ -26,12 +28,25 @@ inline uint32_t preferredBufferCount(PresentMode mode, const SurfaceCapabilities
   return minCount;
 }
 
-inline FrameConfig resolveFrameConfig(const FrameConfig& config, const SurfaceCapabilities& caps) {
+inline FrameConfig resolveFrameConfig(const FrameConfig& config,
+                                      const SurfaceCapabilities& caps,
+                                      std::optional<std::chrono::nanoseconds> defaultInterval) {
   FrameConfig resolved = config;
   if (resolved.bufferCount == 0u) {
     resolved.bufferCount = preferredBufferCount(resolved.presentMode, caps);
   }
+  if (resolved.framePolicy == FramePolicy::Capped) {
+    if (!resolved.frameInterval || resolved.frameInterval->count() <= 0) {
+      if (defaultInterval && defaultInterval->count() > 0) {
+        resolved.frameInterval = defaultInterval;
+      }
+    }
+  }
   return resolved;
+}
+
+inline FrameConfig resolveFrameConfig(const FrameConfig& config, const SurfaceCapabilities& caps) {
+  return resolveFrameConfig(config, caps, std::nullopt);
 }
 
 } // namespace PrimeHost

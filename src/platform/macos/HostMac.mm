@@ -1091,7 +1091,11 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
   if (!caps) {
     return std::unexpected(caps.error());
   }
-  FrameConfig resolved = resolveFrameConfig(config, caps.value());
+  std::optional<std::chrono::nanoseconds> defaultInterval = surface->displayInterval;
+  if (!defaultInterval && displayInterval_) {
+    defaultInterval = displayInterval_;
+  }
+  FrameConfig resolved = resolveFrameConfig(config, caps.value(), defaultInterval);
   auto status = validateFrameConfig(resolved, caps.value());
   if (!status) {
     return status;
