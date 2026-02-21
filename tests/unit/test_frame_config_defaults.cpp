@@ -56,4 +56,23 @@ PH_TEST("primehost.frameconfig", "defaults fill capped interval") {
   }
 }
 
+PH_TEST("primehost.frameconfig", "defaults clamp max frame latency") {
+  SurfaceCapabilities caps{};
+  caps.minBufferCount = 2u;
+  caps.maxBufferCount = 3u;
+
+  FrameConfig config{};
+  config.bufferCount = 0u;
+  config.presentMode = PresentMode::Smooth;
+  config.maxFrameLatency = 0u;
+
+  auto resolved = resolveFrameConfig(config, caps, std::chrono::milliseconds(16));
+  PH_CHECK(resolved.bufferCount == 3u);
+  PH_CHECK(resolved.maxFrameLatency == 1u);
+
+  config.maxFrameLatency = 5u;
+  auto clamped = resolveFrameConfig(config, caps, std::chrono::milliseconds(16));
+  PH_CHECK(clamped.maxFrameLatency == clamped.bufferCount);
+}
+
 TEST_SUITE_END();

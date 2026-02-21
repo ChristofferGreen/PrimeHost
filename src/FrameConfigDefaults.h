@@ -35,6 +35,12 @@ inline FrameConfig resolveFrameConfig(const FrameConfig& config,
   if (resolved.bufferCount == 0u) {
     resolved.bufferCount = preferredBufferCount(resolved.presentMode, caps);
   }
+  if (resolved.maxFrameLatency == 0u) {
+    resolved.maxFrameLatency = 1u;
+  }
+  if (resolved.bufferCount > 0u && resolved.maxFrameLatency > resolved.bufferCount) {
+    resolved.maxFrameLatency = resolved.bufferCount;
+  }
   if (resolved.framePolicy == FramePolicy::Capped) {
     if (!resolved.frameInterval || resolved.frameInterval->count() <= 0) {
       if (defaultInterval && defaultInterval->count() > 0) {
