@@ -10,6 +10,7 @@
 #import <dispatch/dispatch.h>
 
 #include "PrimeHost/Host.h"
+#include "GamepadProfiles.h"
 #include "TextBuffer.h"
 
 #include <array>
@@ -45,21 +46,6 @@ namespace {
 constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
 
-struct GamepadProfile {
-  std::string_view match;
-  bool hasAnalogButtons = false;
-};
-
-constexpr std::array<GamepadProfile, 7> kGamepadProfiles{{
-    {"xbox", true},
-    {"dualshock", true},
-    {"dualsense", true},
-    {"switch pro", false},
-    {"8bitdo", true},
-    {"f310", true},
-    {"f710", true},
-}};
-
 struct SurfaceState {
   SurfaceId surfaceId{};
   NSWindow* window = nullptr;
@@ -80,13 +66,7 @@ std::optional<GamepadProfile> match_gamepad_profile(NSString* name) {
   if (!name) {
     return std::nullopt;
   }
-  std::string lower = [[name lowercaseString] UTF8String];
-  for (const auto& profile : kGamepadProfiles) {
-    if (lower.find(profile.match) != std::string::npos) {
-      return profile;
-    }
-  }
-  return std::nullopt;
+  return findGamepadProfile([name UTF8String]);
 }
 
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {

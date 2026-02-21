@@ -32,6 +32,7 @@ endfunction()
 set(PRIMEHOST_SOURCES
   src/PrimeHost.cpp
   src/PrimeHostAudio.cpp
+  src/GamepadProfiles.cpp
   src/TextBuffer.h
 )
 
@@ -88,11 +89,15 @@ if(PRIMEHOST_BUILD_TESTS)
   add_executable(PrimeHost_tests
     tests/unit/test_main.cpp
     tests/unit/test_audio_smoke.cpp
+    tests/unit/test_gamepad_profiles.cpp
     tests/unit/test_smoke.cpp
     tests/unit/test_text_buffer.cpp
   )
   target_link_libraries(PrimeHost_tests PRIVATE PrimeHost)
-  target_include_directories(PrimeHost_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(PrimeHost_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
   ph_require_cxx23(PrimeHost_tests)
   add_test(NAME PrimeHost_tests COMMAND $<TARGET_FILE:PrimeHost_tests>)
 endif()
