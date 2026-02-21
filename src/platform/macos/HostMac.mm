@@ -18,6 +18,7 @@
 #include "PrimeHost/Host.h"
 #include "DeviceNameMatch.h"
 #include "FrameConfigValidation.h"
+#include "FrameLimiter.h"
 #include "GamepadProfiles.h"
 #include "TextBuffer.h"
 
@@ -63,7 +64,7 @@ struct SurfaceState {
   id commandQueue = nil;
   FrameConfig frameConfig{};
   uint64_t frameIndex = 0u;
-  std::chrono::steady_clock::time_point lastFrameTime{};
+  std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
   std::optional<std::chrono::nanoseconds> displayInterval{};
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
   CADisplayLink* viewDisplayLink = nil;
@@ -932,7 +933,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   state->layer = layer;
   state->commandQueue = [device newCommandQueue];
   state->delegate = delegate;
-  state->lastFrameTime = std::chrono::steady_clock::now();
+  state->lastFrameTime.reset();
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
   if (@available(macOS 14.0, *)) {
     CADisplayLink* link = [view displayLinkWithTarget:view selector:@selector(displayLinkTick:)];
@@ -1007,17 +1008,33 @@ HostStatus HostMac::waitEvents() {
 }
 
 HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
-  (void)bypassCap;
   auto* surface = findSurface(surfaceId.value);
   if (!surface) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (!callbacks_.onFrame) {
+    auto now = std::chrono::steady_clock::now();
+    if (!shouldPresent(surface->frameConfig.framePolicy,
+                       bypassCap,
+                       surface->frameConfig.frameInterval,
+                       surface->lastFrameTime,
+                       now)) {
+      return {};
+    }
+    surface->lastFrameTime = now;
     return presentEmptyFrame(*surface);
   }
 
   auto now = std::chrono::steady_clock::now();
-  auto delta = now - surface->lastFrameTime;
+  if (!shouldPresent(surface->frameConfig.framePolicy,
+                     bypassCap,
+                     surface->frameConfig.frameInterval,
+                     surface->lastFrameTime,
+                     now)) {
+    return {};
+  }
+  auto delta = surface->lastFrameTime ? now - *surface->lastFrameTime
+                                      : std::chrono::steady_clock::duration::zero();
   surface->lastFrameTime = now;
 
   FrameTiming timing{};
