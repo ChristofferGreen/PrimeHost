@@ -57,6 +57,11 @@ These defaults guide the initial Apple Silicon implementation and are expected t
 - Present gating should prevent presenting more often than display interval when enabled.
 - Continuous mode is optional and should be used for animation-heavy content.
 
+## Latency Expectations (macOS)
+- With vsync enabled and double buffering, expect up to ~1 frame of latency in the worst case.
+- Rendering as late as possible before v-blank (via `CVDisplayLink`) minimizes average latency.
+- Tearing is not available for normal macOS windows; lower latency comes from higher refresh rates and tighter pacing.
+
 ## Capability Mapping (Placeholder)
 This table is a placeholder for describing how each platform maps or ignores configuration knobs.
 
@@ -72,7 +77,7 @@ This table is a placeholder for describing how each platform maps or ignores con
 ## API Hooks (Draft)
 - `setFrameConfig(surface, FrameConfig)` applies presentation settings per surface.
 - `requestFrame(surface, bypassCap)` schedules an event-driven frame.
-- `pollEvents()` or `setCallbacks()` drives the loop depending on mode.
+- `pollEvents(EventBuffer)` or `setCallbacks()` drives the loop depending on mode.
 
 ## Open Questions
 - Preferred render backend per platform (D3D11/Vulkan/Metal/GL).

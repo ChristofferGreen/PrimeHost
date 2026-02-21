@@ -65,6 +65,7 @@ Cross-platform considerations remain part of the public API design.
 - Gamepad auto-mapping using a curated device database.
 - Audio output device selection and low-latency playback.
 - Capability queries for surfaces and devices.
+- Capability queries return `HostResult<T>` using `std::expected`.
 - Clipboard access and text input lifecycle (IME composition).
 - Cursor control and relative pointer mode.
 - Window state controls (minimize/maximize/fullscreen).
@@ -95,11 +96,13 @@ Additional utilities: capability queries, clipboard, cursor control, window stat
 - `FramePolicy`: event-driven, continuous, or capped.
 - `FrameConfig`: pacing config per surface.
 - `FpsTracker` / `FpsStats`: utility for high-quality FPS and frame-time statistics.
-Text input encoding: UTF-8 (use `std::string_view` where lifetimes allow).
-Text views are valid for the duration of the callback in native mode, or until the next `pollEvents()` call in external mode.
-All input events include a `deviceId`; pointer events unify mouse/touch/pen with optional pressure/tilt data.
-Gamepad input supports analog values via `value`; rumble is controlled via `setGamepadRumble`.
+Text input encoding: UTF-8 with explicit storage buffers. `TextEvent` carries a span into the `EventBatch` text buffer.
+Text spans are valid for the duration of the callback in native mode, or until the next `pollEvents()` call in external mode.
+All input events include a `deviceId`; pointer events unify mouse/touch/pen with optional delta/pressure/tilt data.
+Gamepad input uses separate button/axis events; button events may include an optional analog value. Rumble is controlled via `setGamepadRumble`.
 Gamepad mappings are configured from a curated device database (see `docs/input-devices.md`).
+Input coordinate systems and ranges are defined in `docs/input-semantics.md`.
+Events are explicitly scoped: `Event::Scope::Surface` requires a surface ID; `Event::Scope::Global` does not.
 Draft C++ API header: `include/PrimeHost/Host.h`.
 
 ## Presentation Config
@@ -111,11 +114,11 @@ See `presentation-config.md` for the authoritative presentation knobs, frame pac
 - `Hybrid`: event-driven frames on input/resize + optional cap.
 
 ## Update Loop API (Draft)
-- `pollEvents()` for external loop (desktop).
+- `pollEvents(EventBuffer)` for external loop (desktop).
 - `requestFrame(surface, bypassCap)` for event-driven updates.
 - `setFrameConfig(surface, FrameConfig)` for pacing.
 - Optional `waitEvents()` for low-power external loops.
-- `setCallbacks()` for native/OS-driven delivery.
+- `setCallbacks()` for native/OS-driven delivery (callbacks receive `EventBatch`).
 
 ## Threading Model (Recommended)
 - Main thread: OS events + presentation (required by many OS APIs).
@@ -137,3 +140,14 @@ See `presentation-config.md` for the authoritative presentation knobs, frame pac
 - Surface limits for mobile/watch.
 - Should PrimeHost own a render thread or leave it to the app?
 - How to expose native handles (HWND/NSWindow/ANativeWindow) when needed.
+
+## Open Decisions (Draft)
+- Event model details for global events across polling vs callback modes.
+- Lifecycle event mapping per platform (suspend/resume/background/foreground).
+- Interaction between `FramePolicy` and `PresentMode` when they conflict.
+- Definition of `FramePacingSource::HostLimiter` behavior.
+- Canonical gamepad control IDs and axis/trigger mapping details.
+- IME composition event shapes and data fields.
+- Whether audio output lives under `Host` or a separate interface.
+- Offscreen surface creation and lifecycle rules.
+- Display selection policy and surface migration rules.

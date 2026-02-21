@@ -10,6 +10,7 @@
 #include <string_view>
 #include <variant>
 #include <vector>
+#include <expected>
 
 namespace PrimeHost {
 
@@ -51,6 +52,78 @@ enum class DeviceType {
   Pen,
   Keyboard,
   Gamepad,
+};
+
+using PresentModeMask = uint32_t;
+using ColorFormatMask = uint32_t;
+
+enum class KeyModifier : uint8_t {
+  Shift = 1u << 0u,
+  Control = 1u << 1u,
+  Alt = 1u << 2u,
+  Super = 1u << 3u,
+  CapsLock = 1u << 4u,
+  NumLock = 1u << 5u,
+};
+
+using KeyModifierMask = uint8_t;
+
+enum class HostErrorCode {
+  Unknown,
+  InvalidSurface,
+  InvalidDevice,
+  InvalidConfig,
+  Unsupported,
+  BufferTooSmall,
+  DeviceUnavailable,
+  OutOfMemory,
+  PlatformFailure,
+};
+
+struct HostError {
+  HostErrorCode code = HostErrorCode::Unknown;
+};
+
+using HostStatus = std::expected<void, HostError>;
+
+template <typename T>
+using HostResult = std::expected<T, HostError>;
+
+struct HostCapabilities {
+  bool supportsClipboard = false;
+  bool supportsFileDialogs = false;
+  bool supportsRelativePointer = false;
+  bool supportsIme = false;
+  bool supportsHaptics = false;
+  bool supportsHeadless = false;
+};
+
+struct SurfaceCapabilities {
+  bool supportsVsyncToggle = false;
+  bool supportsTearing = false;
+  uint32_t minBufferCount = 2u;
+  uint32_t maxBufferCount = 2u;
+  PresentModeMask presentModes = 0u;
+  ColorFormatMask colorFormats = 0u;
+};
+
+struct DeviceCapabilities {
+  DeviceType type = DeviceType::Mouse;
+  bool hasPressure = false;
+  bool hasTilt = false;
+  bool hasTwist = false;
+  bool hasDistance = false;
+  bool hasRumble = false;
+  bool hasAnalogButtons = false;
+  uint32_t maxTouches = 0u;
+};
+
+struct DeviceInfo {
+  uint32_t deviceId = 0u;
+  DeviceType type = DeviceType::Mouse;
+  uint16_t vendorId = 0u;
+  uint16_t productId = 0u;
+  Utf8TextView name;
 };
 
 struct FrameTiming {
@@ -98,13 +171,13 @@ struct PointerEvent {
   PointerPhase phase = PointerPhase::Move;
   int32_t x = 0;
   int32_t y = 0;
-  int32_t deltaX = 0;
-  int32_t deltaY = 0;
-  float pressure = 0.0f;
-  float tiltX = 0.0f;
-  float tiltY = 0.0f;
-  float twist = 0.0f;
-  float distance = 0.0f;
+  std::optional<int32_t> deltaX;
+  std::optional<int32_t> deltaY;
+  std::optional<float> pressure;
+  std::optional<float> tiltX;
+  std::optional<float> tiltY;
+  std::optional<float> twist;
+  std::optional<float> distance;
   uint32_t buttonMask = 0u;
   bool isPrimary = true;
 };
@@ -112,32 +185,39 @@ struct PointerEvent {
 struct KeyEvent {
   uint32_t deviceId = 0u;
   uint32_t keyCode = 0u;
+  KeyModifierMask modifiers = 0u;
   bool pressed = false;
   bool repeat = false;
 };
 
+struct TextSpan {
+  uint32_t offset = 0u;
+  uint32_t length = 0u;
+};
+
 struct TextEvent {
   uint32_t deviceId = 0u;
-  Utf8TextView text;
+  TextSpan text;
 };
 
 struct ScrollEvent {
   uint32_t deviceId = 0u;
   float deltaX = 0.0f;
   float deltaY = 0.0f;
+  bool isLines = false;
 };
 
-enum class GamepadEventType {
-  Button,
-  Axis,
-};
-
-struct GamepadEvent {
+struct GamepadButtonEvent {
   uint32_t deviceId = 0u;
-  GamepadEventType type = GamepadEventType::Button;
+  uint32_t controlId = 0u;
+  bool pressed = false;
+  std::optional<float> value;
+};
+
+struct GamepadAxisEvent {
+  uint32_t deviceId = 0u;
   uint32_t controlId = 0u;
   float value = 0.0f;
-  bool pressed = false;
 };
 
 struct GamepadRumble {
@@ -153,7 +233,13 @@ struct DeviceEvent {
   bool connected = true;
 };
 
-using InputEvent = std::variant<PointerEvent, KeyEvent, TextEvent, ScrollEvent, GamepadEvent, DeviceEvent>;
+using InputEvent = std::variant<PointerEvent,
+                                KeyEvent,
+                                TextEvent,
+                                ScrollEvent,
+                                GamepadButtonEvent,
+                                GamepadAxisEvent,
+                                DeviceEvent>;
 
 struct ResizeEvent {
   uint32_t width = 0u;
@@ -175,13 +261,29 @@ struct LifecycleEvent {
 };
 
 struct Event {
+  enum class Scope {
+    Surface,
+    Global,
+  };
+
+  Scope scope = Scope::Surface;
+  std::optional<SurfaceId> surfaceId;
   std::chrono::steady_clock::time_point time;
-  SurfaceId surfaceId;
   std::variant<InputEvent, ResizeEvent, LifecycleEvent> payload;
 };
 
+struct EventBuffer {
+  std::span<Event> events;
+  std::span<char> textBytes;
+};
+
+struct EventBatch {
+  std::span<const Event> events;
+  std::span<const char> textBytes;
+};
+
 struct Callbacks {
-  std::function<void(const Event&)> onEvent;
+  std::function<void(const EventBatch&)> onEvents;
   std::function<void(SurfaceId, const FrameTiming&)> onFrame;
 };
 
@@ -189,18 +291,24 @@ class Host {
 public:
   virtual ~Host() = default;
 
-  virtual std::optional<SurfaceId> createSurface(const SurfaceConfig& config) = 0;
-  virtual void destroySurface(SurfaceId surfaceId) = 0;
+  virtual HostResult<HostCapabilities> hostCapabilities() const = 0;
+  virtual HostResult<SurfaceCapabilities> surfaceCapabilities(SurfaceId surfaceId) const = 0;
+  virtual HostResult<DeviceInfo> deviceInfo(uint32_t deviceId) const = 0;
+  virtual HostResult<DeviceCapabilities> deviceCapabilities(uint32_t deviceId) const = 0;
+  virtual HostResult<size_t> devices(std::span<DeviceInfo> outDevices) const = 0;
 
-  virtual size_t pollEvents(std::span<Event> outEvents) = 0;
-  virtual void waitEvents() = 0;
+  virtual HostResult<SurfaceId> createSurface(const SurfaceConfig& config) = 0;
+  virtual HostStatus destroySurface(SurfaceId surfaceId) = 0;
 
-  virtual void requestFrame(SurfaceId surfaceId, bool bypassCap) = 0;
-  virtual void setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) = 0;
+  virtual HostResult<EventBatch> pollEvents(const EventBuffer& buffer) = 0;
+  virtual HostStatus waitEvents() = 0;
 
-  virtual void setGamepadRumble(const GamepadRumble& rumble) = 0;
+  virtual HostStatus requestFrame(SurfaceId surfaceId, bool bypassCap) = 0;
+  virtual HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) = 0;
 
-  virtual void setCallbacks(Callbacks callbacks) = 0;
+  virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
+
+  virtual HostStatus setCallbacks(Callbacks callbacks) = 0;
 };
 
 } // namespace PrimeHost

@@ -9,10 +9,14 @@ platform-neutral and stable across backends.
 - `FrameConfig`: presentation and pacing configuration per surface.
 - `SurfaceConfig`: surface creation settings.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
+- `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
+- `HostStatus`, `HostResult<T>`, `HostError`: error reporting for host operations using `std::expected`.
 
 ## Capabilities
 - Surface capabilities (buffer counts, tearing support, vsync modes).
 - Input capabilities (pointer types, pen pressure, gamepad rumble).
+Capability queries return `HostResult<T>` (`std::expected`) values.
+Device lists are filled into caller-provided spans with a `size_t` result.
 
 ## Displays
 - Enumerate displays/monitors.
@@ -23,20 +27,73 @@ platform-neutral and stable across backends.
 ## Events
 - `Event`: tagged union of input, resize, and lifecycle events.
 - `DeviceEvent`: connect/disconnect notification for input devices.
-- Input events: `PointerEvent`, `KeyEvent`, `TextEvent`, `ScrollEvent`, `GamepadEvent`.
+- Input events: `PointerEvent`, `KeyEvent`, `TextEvent`, `ScrollEvent`, `GamepadButtonEvent`, `GamepadAxisEvent`.
 - All input events carry `deviceId`.
-- Pointer events unify mouse/touch/pen and include pressure/tilt/twist when available.
-- Text input is UTF-8 (`std::string_view`) with a callback-lifetime guarantee.
+- Pointer events unify mouse/touch/pen; optional fields include delta, pressure, tilt, twist, and distance.
+- Gamepad buttons may include an optional analog value; axes always include a float value.
+- Text input is UTF-8; `TextEvent` carries a `TextSpan` pointing into the `EventBatch` text buffer.
+- Text spans are valid for the duration of the callback or until the next `pollEvents()` call.
 - IME composition events (draft).
+Input ranges and coordinate conventions are defined in `docs/input-semantics.md`.
+
+Event scoping:
+- `Event::scope == Surface` requires `surfaceId` to be set.
+- `Event::scope == Global` requires `surfaceId` to be empty.
+
+### TextSpan Usage (Example)
+```cpp
+std::array<PrimeHost::Event, 256> events;
+std::array<char, 4096> textBytes;
+
+PrimeHost::EventBuffer buffer{
+    .events = events,
+    .textBytes = textBytes,
+};
+
+PrimeHost::EventBatch batch = host.pollEvents(buffer);
+
+for (const PrimeHost::Event& evt : batch.events) {
+  if (auto* input = std::get_if<PrimeHost::InputEvent>(&evt.payload)) {
+    if (auto* text = std::get_if<PrimeHost::TextEvent>(input)) {
+      const char* base = batch.textBytes.data() + text->text.offset;
+      std::string_view utf8{base, text->text.length};
+      handleText(utf8);
+    }
+  }
+}
+```
 - Drag-and-drop file events (draft).
 - Focus/activation events per surface (draft).
 
 ## Host Interface
-- `Host::createSurface`, `destroySurface`
-- `Host::pollEvents`, `waitEvents`
+- `Host::hostCapabilities() -> HostResult<HostCapabilities>`
+- `Host::surfaceCapabilities(SurfaceId) -> HostResult<SurfaceCapabilities>`
+- `Host::deviceInfo(deviceId) -> HostResult<DeviceInfo>`
+- `Host::deviceCapabilities(deviceId) -> HostResult<DeviceCapabilities>`
+- `Host::devices(span<DeviceInfo>) -> HostResult<size_t>`
+- `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
+- `Host::destroySurface(SurfaceId) -> HostStatus`
+- `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
 - `Host::requestFrame`, `setFrameConfig`
 - `Host::setGamepadRumble`
-- `Host::setCallbacks`
+- `Host::setCallbacks` (native callbacks use `EventBatch`).
+
+### Error Handling (Example)
+```cpp
+auto caps = host.surfaceCapabilities(surfaceId);
+if (!caps) {
+  return;
+}
+
+auto batch = host.pollEvents(buffer);
+if (!batch) {
+  return;
+}
+
+for (const auto& evt : batch->events) {
+  // ...
+}
+```
 - Native file dialogs (draft).
 - Haptics for supported devices (draft).
 - Window icon and title updates (draft).
