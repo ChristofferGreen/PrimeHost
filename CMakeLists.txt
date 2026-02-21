@@ -91,6 +91,7 @@ if(PRIMEHOST_BUILD_TESTS)
   add_executable(PrimeHost_tests
     tests/unit/test_main.cpp
     tests/unit/test_audio_config_defaults.cpp
+    tests/unit/test_audio_config_validation.cpp
     tests/unit/test_audio_smoke.cpp
     tests/unit/test_device_name_match.cpp
     tests/unit/test_devices.cpp

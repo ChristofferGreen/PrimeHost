@@ -4,6 +4,7 @@
 
 #include "PrimeHost/Audio.h"
 #include "AudioConfigDefaults.h"
+#include "AudioConfigValidation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -80,11 +81,9 @@ public:
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
     }
     AudioStreamConfig resolved = resolveAudioStreamConfig(config);
-    if (resolved.format.channels == 0u) {
-      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
-    }
-    if (resolved.format.sampleRate == 0u) {
-      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    auto validation = validateAudioStreamConfig(resolved);
+    if (!validation) {
+      return validation;
     }
     if (config.format.format != SampleFormat::Float32 && config.format.format != SampleFormat::Int16) {
       return std::unexpected(HostError{HostErrorCode::Unsupported});
