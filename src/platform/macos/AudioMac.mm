@@ -218,6 +218,7 @@ public:
     if (AudioOutputUnitStart(unit_) != noErr) {
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
+    streamRunning_ = true;
     return {};
   }
 
@@ -228,6 +229,7 @@ public:
     if (AudioOutputUnitStop(unit_) != noErr) {
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
+    streamRunning_ = false;
     return {};
   }
 
@@ -248,6 +250,7 @@ public:
     outputInterleaved_ = true;
     outputSampleFormat_ = SampleFormat::Float32;
     bytesPerSample_ = 0u;
+    streamRunning_ = false;
     return {};
   }
 
@@ -443,7 +446,48 @@ private:
   }
 
   void handleDeviceChange() {
+    AudioDeviceId previousDefault = defaultDevice_;
+    AudioDeviceId previousActive = activeDevice_;
+    bool hadStream = unit_ != nullptr;
+    bool wasRunning = streamRunning_;
+
     refreshDevices(true);
+
+    if (!hadStream) {
+      return;
+    }
+
+    const bool activePresent = lastDeviceIds_.find(previousActive) != lastDeviceIds_.end();
+    const bool defaultChanged = (defaultDevice_ != 0 && defaultDevice_ != previousDefault);
+    const bool shouldReopenToDefault = defaultChanged && previousActive == previousDefault;
+
+    if (!activePresent || shouldReopenToDefault) {
+      if (defaultDevice_ != 0) {
+        reopenStream(defaultDevice_, wasRunning);
+      } else {
+        closeStream();
+      }
+    }
+  }
+
+  bool reopenStream(AudioDeviceId deviceId, bool restart) {
+    if (!callback_) {
+      return false;
+    }
+    AudioCallback callback = callback_;
+    void* userData = userData_;
+    AudioStreamConfig config = activeConfig_;
+
+    closeStream();
+    if (!openStream(deviceId, config, callback, userData)) {
+      return false;
+    }
+    if (restart) {
+      if (!startStream()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   bool refreshDevices(bool emitEvents) const {
@@ -648,6 +692,7 @@ private:
   uint32_t bytesPerSample_ = 0u;
   uint32_t scratchFrames_ = 0u;
   std::vector<float> scratchInterleaved_;
+  bool streamRunning_ = false;
 };
 
 } // namespace

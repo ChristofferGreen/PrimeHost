@@ -115,6 +115,8 @@ HostResult<std::unique_ptr<AudioHost>> createAudioHost();
 ## Device Events
 - Audio device connect/disconnect should be surfaced via `AudioDeviceEvent`.
 - Default device changes should be reported so the engine can re-open a stream.
+  - On macOS, the backend attempts to re-open the current stream on the new default device if the
+    previous default device was in use or the active device disappears.
 
 ## Open Questions
 - Whether to expose pull (callback) only or also push APIs.
