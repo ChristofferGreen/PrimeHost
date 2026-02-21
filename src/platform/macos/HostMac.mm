@@ -865,6 +865,9 @@ HostResult<DeviceCapabilities> HostMac::deviceCapabilities(uint32_t deviceId) co
 }
 
 HostResult<size_t> HostMac::devices(std::span<DeviceInfo> outDevices) const {
+  if (outDevices.empty()) {
+    return deviceOrder_.size();
+  }
   if (outDevices.size() < deviceOrder_.size()) {
     return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
   }
