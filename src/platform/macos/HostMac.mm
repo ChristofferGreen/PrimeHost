@@ -6,12 +6,17 @@
 #import <GameController/GameController.h>
 #import <GameController/GCDualShockGamepad.h>
 #import <GameController/GCDualSenseGamepad.h>
+#import <IOKit/hid/IOHIDManager.h>
+#import <IOKit/hid/IOHIDDevice.h>
+#import <IOKit/hid/IOHIDKeys.h>
+#import <IOKit/hid/IOHIDUsageTables.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <dispatch/dispatch.h>
 
 #include "PrimeHost/Host.h"
+#include "DeviceNameMatch.h"
 #include "GamepadProfiles.h"
 #include "TextBuffer.h"
 
@@ -64,13 +69,100 @@ struct SurfaceState {
 #endif
 };
 
-std::optional<GamepadProfile> match_gamepad_profile(NSString* name) {
-  if (!name) {
-    return std::nullopt;
-  }
-  return findGamepadProfile([name UTF8String]);
+std::optional<GamepadProfile> match_gamepad_profile(uint16_t vendorId, uint16_t productId, std::string_view name) {
+  (void)vendorId;
+  (void)productId;
+  return findGamepadProfile(name);
 }
 
+uint16_t hid_uint16_property(IOHIDDeviceRef device, CFStringRef key) {
+  if (!device || !key) {
+    return 0u;
+  }
+  CFTypeRef value = IOHIDDeviceGetProperty(device, key);
+  if (!value || CFGetTypeID(value) != CFNumberGetTypeID()) {
+    return 0u;
+  }
+  int number = 0;
+  if (!CFNumberGetValue(static_cast<CFNumberRef>(value), kCFNumberIntType, &number)) {
+    return 0u;
+  }
+  if (number < 0 || number > 0xFFFF) {
+    return 0u;
+  }
+  return static_cast<uint16_t>(number);
+}
+
+std::string hid_string_property(IOHIDDeviceRef device, CFStringRef key) {
+  if (!device || !key) {
+    return {};
+  }
+  CFTypeRef value = IOHIDDeviceGetProperty(device, key);
+  if (!value || CFGetTypeID(value) != CFStringGetTypeID()) {
+    return {};
+  }
+  CFStringRef string = static_cast<CFStringRef>(value);
+  char buffer[256];
+  if (CFStringGetCString(string, buffer, sizeof(buffer), kCFStringEncodingUTF8)) {
+    return std::string(buffer);
+  }
+  return {};
+}
+
+uint64_t hid_device_id(IOHIDDeviceRef device) {
+  if (!device) {
+    return 0u;
+  }
+  return static_cast<uint64_t>(CFHash(device));
+}
+
+bool hid_usage_matches(IOHIDDeviceRef device, uint32_t usagePage, uint32_t usage) {
+  if (!device) {
+    return false;
+  }
+  uint32_t deviceUsagePage = hid_uint16_property(device, CFSTR(kIOHIDPrimaryUsagePageKey));
+  uint32_t deviceUsage = hid_uint16_property(device, CFSTR(kIOHIDPrimaryUsageKey));
+  return deviceUsagePage == usagePage && deviceUsage == usage;
+}
+
+bool hid_is_gamepad_device(IOHIDDeviceRef device) {
+  return hid_usage_matches(device, kHIDPage_GenericDesktop, kHIDUsage_GD_GamePad) ||
+         hid_usage_matches(device, kHIDPage_GenericDesktop, kHIDUsage_GD_Joystick);
+}
+
+std::optional<std::pair<uint16_t, uint16_t>> hid_vidpid_match(
+    const std::unordered_map<uint64_t, IOHIDDeviceRef>& devices,
+    std::string_view name) {
+  if (name.empty()) {
+    return std::nullopt;
+  }
+  int bestScore = 0;
+  std::optional<std::pair<uint16_t, uint16_t>> bestMatch;
+  for (const auto& entry : devices) {
+    IOHIDDeviceRef device = entry.second;
+    if (!device) {
+      continue;
+    }
+    std::string product = hid_string_property(device, CFSTR(kIOHIDProductKey));
+    if (product.empty()) {
+      continue;
+    }
+    int score = deviceNameMatchScore(name, product);
+    if (score <= 0) {
+      continue;
+    }
+    uint16_t vendorId = hid_uint16_property(device, CFSTR(kIOHIDVendorIDKey));
+    uint16_t productId = hid_uint16_property(device, CFSTR(kIOHIDProductIDKey));
+    if (vendorId == 0u && productId == 0u) {
+      continue;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = std::pair<uint16_t, uint16_t>{vendorId, productId};
+    }
+  }
+  return bestMatch;
+}
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {
   uint32_t result = 0u;
   if (flags & NSEventModifierFlagShift) result |= static_cast<uint32_t>(KeyModifier::Shift);
@@ -252,6 +344,8 @@ public:
   void enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value);
   void enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float value);
   void releaseRelativePointer();
+  void handleHidDeviceAttached(IOHIDDeviceRef device);
+  void handleHidDeviceRemoved(IOHIDDeviceRef device);
 
 private:
   struct QueuedEvent {
@@ -277,6 +371,8 @@ private:
   std::vector<uint32_t> deviceOrder_;
   std::unordered_map<void*, uint32_t> gamepadIds_;
   std::unordered_map<uint32_t, GCController*> gamepadControllers_;
+  IOHIDManagerRef hidManager_ = nullptr;
+  std::unordered_map<uint64_t, IOHIDDeviceRef> hidDevicesById_;
   std::unordered_map<uint32_t, CHHapticEngine*> hapticsEngines_;
   id gamepadConnectObserver_ = nil;
   id gamepadDisconnectObserver_ = nil;
@@ -313,6 +409,30 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     host->handleDisplayLinkTick();
   });
   return kCVReturnSuccess;
+}
+
+static void hid_device_attached(void* context, IOReturn result, void* sender, IOHIDDeviceRef device) {
+  (void)result;
+  (void)sender;
+  auto* host = static_cast<PrimeHost::HostMac*>(context);
+  if (!host || !device) {
+    return;
+  }
+  dispatch_async(dispatch_get_main_queue(), ^{
+    host->handleHidDeviceAttached(device);
+  });
+}
+
+static void hid_device_removed(void* context, IOReturn result, void* sender, IOHIDDeviceRef device) {
+  (void)result;
+  (void)sender;
+  auto* host = static_cast<PrimeHost::HostMac*>(context);
+  if (!host || !device) {
+    return;
+  }
+  dispatch_async(dispatch_get_main_queue(), ^{
+    host->handleHidDeviceRemoved(device);
+  });
 }
 
 @implementation PHWindowDelegate
@@ -579,6 +699,45 @@ HostMac::HostMac() {
   if (@available(macOS 10.15, *)) {
     auto* center = [NSNotificationCenter defaultCenter];
     HostMac* host = this;
+    hidManager_ = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
+    if (hidManager_) {
+      NSDictionary* matchGamepad = @{
+        @kIOHIDDeviceUsagePageKey : @(kHIDPage_GenericDesktop),
+        @kIOHIDDeviceUsageKey : @(kHIDUsage_GD_GamePad)
+      };
+      NSDictionary* matchJoystick = @{
+        @kIOHIDDeviceUsagePageKey : @(kHIDPage_GenericDesktop),
+        @kIOHIDDeviceUsageKey : @(kHIDUsage_GD_Joystick)
+      };
+      NSArray* matches = @[matchGamepad, matchJoystick];
+      IOHIDManagerSetDeviceMatchingMultiple(hidManager_, (__bridge CFArrayRef)matches);
+      IOHIDManagerRegisterDeviceMatchingCallback(hidManager_, &hid_device_attached, this);
+      IOHIDManagerRegisterDeviceRemovalCallback(hidManager_, &hid_device_removed, this);
+      IOHIDManagerScheduleWithRunLoop(hidManager_, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
+      IOReturn openResult = IOHIDManagerOpen(hidManager_, kIOHIDOptionsTypeNone);
+      if (openResult == kIOReturnSuccess) {
+        CFSetRef devices = IOHIDManagerCopyDevices(hidManager_);
+        if (devices) {
+          CFIndex count = CFSetGetCount(devices);
+          if (count > 0) {
+            std::vector<const void*> deviceValues(static_cast<std::size_t>(count));
+            CFSetGetValues(devices, deviceValues.data());
+            for (const void* value : deviceValues) {
+              IOHIDDeviceRef device = static_cast<IOHIDDeviceRef>(const_cast<void*>(value));
+              if (hid_is_gamepad_device(device)) {
+                handleHidDeviceAttached(device);
+              }
+            }
+          }
+          CFRelease(devices);
+        }
+      } else {
+        IOHIDManagerUnscheduleFromRunLoop(hidManager_, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
+        CFRelease(hidManager_);
+        hidManager_ = nullptr;
+      }
+    }
+
     gamepadConnectObserver_ =
         [center addObserverForName:GCControllerDidConnectNotification
                             object:nil
@@ -628,6 +787,18 @@ HostMac::~HostMac() {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadDisconnectObserver_];
     gamepadDisconnectObserver_ = nil;
   }
+  if (hidManager_) {
+    IOHIDManagerUnscheduleFromRunLoop(hidManager_, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
+    IOHIDManagerClose(hidManager_, kIOHIDOptionsTypeNone);
+    CFRelease(hidManager_);
+    hidManager_ = nullptr;
+  }
+  for (auto& entry : hidDevicesById_) {
+    if (entry.second) {
+      CFRelease(entry.second);
+    }
+  }
+  hidDevicesById_.clear();
   for (auto& entry : hapticsEngines_) {
     if (entry.second) {
       [entry.second stopWithCompletionHandler:nil];
@@ -1183,6 +1354,12 @@ void HostMac::handleGamepadConnected(GCController* controller) {
     record.nameStorage = "Gamepad";
   }
 
+  std::string_view nameView = record.nameStorage;
+  if (auto match = hid_vidpid_match(hidDevicesById_, nameView)) {
+    record.info.vendorId = match->first;
+    record.info.productId = match->second;
+  }
+
   record.caps.type = DeviceType::Gamepad;
   if (controller.extendedGamepad) {
     record.caps.hasAnalogButtons = true;
@@ -1190,7 +1367,7 @@ void HostMac::handleGamepadConnected(GCController* controller) {
   if (controller.microGamepad) {
     record.caps.hasAnalogButtons = true;
   }
-  if (auto profile = match_gamepad_profile(name)) {
+  if (auto profile = match_gamepad_profile(record.info.vendorId, record.info.productId, nameView)) {
     record.caps.hasAnalogButtons = record.caps.hasAnalogButtons || profile->hasAnalogButtons;
   }
   if (@available(macOS 11.0, *)) {
@@ -1382,6 +1559,36 @@ void HostMac::handleGamepadDisconnected(GCController* controller) {
   event.time = std::chrono::steady_clock::now();
   event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = DeviceType::Gamepad, .connected = false};
   enqueueEvent(std::move(event));
+}
+
+void HostMac::handleHidDeviceAttached(IOHIDDeviceRef device) {
+  if (!device) {
+    return;
+  }
+  if (!hid_is_gamepad_device(device)) {
+    return;
+  }
+  uint64_t id = hid_device_id(device);
+  if (id == 0u || hidDevicesById_.find(id) != hidDevicesById_.end()) {
+    return;
+  }
+  CFRetain(device);
+  hidDevicesById_.emplace(id, device);
+}
+
+void HostMac::handleHidDeviceRemoved(IOHIDDeviceRef device) {
+  if (!device) {
+    return;
+  }
+  uint64_t id = hid_device_id(device);
+  auto it = hidDevicesById_.find(id);
+  if (it == hidDevicesById_.end()) {
+    return;
+  }
+  if (it->second) {
+    CFRelease(it->second);
+  }
+  hidDevicesById_.erase(it);
 }
 
 void HostMac::enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value) {

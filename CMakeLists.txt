@@ -64,6 +64,7 @@ if(APPLE)
   find_library(AUDIOUNIT_LIBRARY AudioUnit)
   find_library(COREAUDIO_LIBRARY CoreAudio)
   find_library(COREHAPTICS_LIBRARY CoreHaptics)
+  find_library(IOKIT_LIBRARY IOKit)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
   target_link_libraries(PrimeHost PRIVATE
     ${COCOA_LIBRARY}
@@ -74,6 +75,7 @@ if(APPLE)
     ${AUDIOUNIT_LIBRARY}
     ${COREAUDIO_LIBRARY}
     ${COREHAPTICS_LIBRARY}
+    ${IOKIT_LIBRARY}
     ${QUARTZCORE_LIBRARY}
   )
   if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
@@ -89,6 +91,7 @@ if(PRIMEHOST_BUILD_TESTS)
   add_executable(PrimeHost_tests
     tests/unit/test_main.cpp
     tests/unit/test_audio_smoke.cpp
+    tests/unit/test_device_name_match.cpp
     tests/unit/test_gamepad_profiles.cpp
     tests/unit/test_gamepad_ids.cpp
     tests/unit/test_smoke.cpp
