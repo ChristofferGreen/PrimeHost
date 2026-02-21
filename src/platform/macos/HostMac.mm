@@ -2,6 +2,7 @@
 #import <Carbon/Carbon.h>
 #import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
+#import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <dispatch/dispatch.h>
 
@@ -31,6 +32,7 @@ class HostMac;
 @property(nonatomic, assign) PrimeHost::HostMac* host;
 @property(nonatomic, assign) uint64_t surfaceId;
 - (void)setImeRect:(NSRect)rect;
+- (void)displayLinkTick:(CADisplayLink*)link;
 @end
 
 namespace PrimeHost {
@@ -38,6 +40,16 @@ namespace {
 
 constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
+
+struct GamepadMapping {
+  uint16_t vendorId = 0u;
+  uint16_t productId = 0u;
+  const char* name = nullptr;
+  bool hasRumble = false;
+  bool hasAnalogButtons = false;
+};
+
+[[maybe_unused]] constexpr std::array<GamepadMapping, 0> kGamepadMappings{};
 
 struct SurfaceState {
   SurfaceId surfaceId{};
@@ -49,6 +61,10 @@ struct SurfaceState {
   FrameConfig frameConfig{};
   uint64_t frameIndex = 0u;
   std::chrono::steady_clock::time_point lastFrameTime{};
+  std::optional<std::chrono::nanoseconds> displayInterval{};
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+  CADisplayLink* viewDisplayLink = nil;
+#endif
 };
 
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {
@@ -225,6 +241,7 @@ public:
   void handleText(uint64_t surfaceId, NSString* text);
   void handleWindowClosed(uint64_t surfaceId);
   void handleDisplayLinkTick();
+  void handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link);
 
 private:
   struct QueuedEvent {
@@ -241,12 +258,18 @@ private:
 
   NSApplication* app_ = nullptr;
   std::unordered_map<uint64_t, std::unique_ptr<SurfaceState>> surfaces_;
+  struct DeviceRecord {
+    DeviceInfo info;
+    DeviceCapabilities caps;
+  };
+  std::unordered_map<uint32_t, DeviceRecord> devices_;
+  std::vector<uint32_t> deviceOrder_;
   std::vector<QueuedEvent> eventQueue_;
   std::vector<Event> callbackEvents_;
   std::vector<char> callbackText_;
   Callbacks callbacks_{};
   uint64_t nextSurfaceId_ = 1u;
-  CVDisplayLinkRef displayLink_ = nullptr;
+  CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
 };
 
@@ -402,6 +425,12 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
   }
 }
 
+- (void)displayLinkTick:(CADisplayLink*)link {
+  if (self.host) {
+    self.host->handleDisplayLinkTick(self.surfaceId, link);
+  }
+}
+
 - (void)flagsChanged:(NSEvent*)event {
   if (self.host) {
     self.host->handleModifiers(event);
@@ -498,23 +527,57 @@ HostMac::HostMac() {
   [app_ setActivationPolicy:NSApplicationActivationPolicyRegular];
   [app_ finishLaunching];
 
-  CVDisplayLinkCreateWithActiveCGDisplays(&displayLink_);
-  if (displayLink_) {
-    CVDisplayLinkSetOutputCallback(displayLink_, &display_link_callback, this);
-    CVTime refresh = CVDisplayLinkGetNominalOutputVideoRefreshPeriod(displayLink_);
+  DeviceRecord mouse{};
+  mouse.info.deviceId = kMouseDeviceId;
+  mouse.info.type = DeviceType::Mouse;
+  mouse.info.name = "Mouse";
+  mouse.caps.type = DeviceType::Mouse;
+  devices_.emplace(kMouseDeviceId, mouse);
+  deviceOrder_.push_back(kMouseDeviceId);
+
+  DeviceRecord keyboard{};
+  keyboard.info.deviceId = kKeyboardDeviceId;
+  keyboard.info.type = DeviceType::Keyboard;
+  keyboard.info.name = "Keyboard";
+  keyboard.caps.type = DeviceType::Keyboard;
+  devices_.emplace(kKeyboardDeviceId, keyboard);
+  deviceOrder_.push_back(kKeyboardDeviceId);
+
+  auto now = std::chrono::steady_clock::now();
+  for (uint32_t deviceId : deviceOrder_) {
+    auto it = devices_.find(deviceId);
+    if (it != devices_.end()) {
+      Event event{};
+      event.scope = Event::Scope::Global;
+      event.time = now;
+      event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = it->second.info.type, .connected = true};
+      enqueueEvent(std::move(event));
+    }
+  }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  CVDisplayLinkCreateWithActiveCGDisplays(&cvDisplayLink_);
+  if (cvDisplayLink_) {
+    CVDisplayLinkSetOutputCallback(cvDisplayLink_, &display_link_callback, this);
+    CVTime refresh = CVDisplayLinkGetNominalOutputVideoRefreshPeriod(cvDisplayLink_);
     if (refresh.timeValue > 0 && refresh.timeScale > 0) {
       double seconds = static_cast<double>(refresh.timeValue) / static_cast<double>(refresh.timeScale);
       displayInterval_ = std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::duration<double>(seconds));
     }
   }
+#pragma clang diagnostic pop
 }
 
 HostMac::~HostMac() {
-  if (displayLink_) {
-    CVDisplayLinkStop(displayLink_);
-    CVDisplayLinkRelease(displayLink_);
-    displayLink_ = nullptr;
+  if (cvDisplayLink_) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    CVDisplayLinkStop(cvDisplayLink_);
+    CVDisplayLinkRelease(cvDisplayLink_);
+#pragma clang diagnostic pop
+    cvDisplayLink_ = nullptr;
   }
 }
 
@@ -523,7 +586,7 @@ HostResult<HostCapabilities> HostMac::hostCapabilities() const {
   caps.supportsClipboard = false;
   caps.supportsFileDialogs = false;
   caps.supportsRelativePointer = false;
-  caps.supportsIme = false;
+  caps.supportsIme = true;
   caps.supportsHaptics = false;
   caps.supportsHeadless = false;
   return caps;
@@ -547,43 +610,33 @@ HostResult<SurfaceCapabilities> HostMac::surfaceCapabilities(SurfaceId surfaceId
 }
 
 HostResult<DeviceInfo> HostMac::deviceInfo(uint32_t deviceId) const {
-  DeviceInfo info{};
-  if (deviceId == kMouseDeviceId) {
-    info.deviceId = deviceId;
-    info.type = DeviceType::Mouse;
-    info.name = "Mouse";
-    return info;
-  }
-  if (deviceId == kKeyboardDeviceId) {
-    info.deviceId = deviceId;
-    info.type = DeviceType::Keyboard;
-    info.name = "Keyboard";
-    return info;
+  auto it = devices_.find(deviceId);
+  if (it != devices_.end()) {
+    return it->second.info;
   }
   return std::unexpected(HostError{HostErrorCode::InvalidDevice});
 }
 
 HostResult<DeviceCapabilities> HostMac::deviceCapabilities(uint32_t deviceId) const {
-  DeviceCapabilities caps{};
-  if (deviceId == kMouseDeviceId) {
-    caps.type = DeviceType::Mouse;
-    return caps;
-  }
-  if (deviceId == kKeyboardDeviceId) {
-    caps.type = DeviceType::Keyboard;
-    return caps;
+  auto it = devices_.find(deviceId);
+  if (it != devices_.end()) {
+    return it->second.caps;
   }
   return std::unexpected(HostError{HostErrorCode::InvalidDevice});
 }
 
 HostResult<size_t> HostMac::devices(std::span<DeviceInfo> outDevices) const {
-  constexpr size_t kDeviceCount = 2u;
-  if (outDevices.size() < kDeviceCount) {
+  if (outDevices.size() < deviceOrder_.size()) {
     return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
   }
-  outDevices[0] = DeviceInfo{.deviceId = kMouseDeviceId, .type = DeviceType::Mouse, .vendorId = 0u, .productId = 0u, .name = "Mouse"};
-  outDevices[1] = DeviceInfo{.deviceId = kKeyboardDeviceId, .type = DeviceType::Keyboard, .vendorId = 0u, .productId = 0u, .name = "Keyboard"};
-  return kDeviceCount;
+  size_t count = 0u;
+  for (uint32_t deviceId : deviceOrder_) {
+    auto it = devices_.find(deviceId);
+    if (it != devices_.end()) {
+      outDevices[count++] = it->second.info;
+    }
+  }
+  return count;
 }
 
 HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
@@ -643,6 +696,16 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   state->commandQueue = [device newCommandQueue];
   state->delegate = delegate;
   state->lastFrameTime = std::chrono::steady_clock::now();
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+  if (@available(macOS 14.0, *)) {
+    CADisplayLink* link = [view displayLinkWithTarget:view selector:@selector(displayLinkTick:)];
+    if (link) {
+      [link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+      link.paused = YES;
+      state->viewDisplayLink = link;
+    }
+  }
+#endif
   surfaces_.emplace(surfaceId.value, std::move(state));
 
   [window makeFirstResponder:view];
@@ -664,6 +727,12 @@ HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSWindow* window = it->second->window;
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+  if (it->second->viewDisplayLink) {
+    [it->second->viewDisplayLink invalidate];
+    it->second->viewDisplayLink = nil;
+  }
+#endif
   it->second->window = nil;
   it->second->view = nil;
   it->second->layer = nil;
@@ -718,8 +787,12 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
 
   FrameDiagnostics diag{};
   std::optional<std::chrono::nanoseconds> target = surface->frameConfig.frameInterval;
-  if (!target && displayInterval_) {
-    target = displayInterval_;
+  if (!target) {
+    if (surface->displayInterval) {
+      target = surface->displayInterval;
+    } else if (displayInterval_) {
+      target = displayInterval_;
+    }
   }
   if (target) {
     diag.targetInterval = *target;
@@ -935,6 +1008,12 @@ void HostMac::handleWindowClosed(uint64_t surfaceId) {
 
   auto it = surfaces_.find(surfaceId);
   if (it != surfaces_.end()) {
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+    if (it->second->viewDisplayLink) {
+      [it->second->viewDisplayLink invalidate];
+      it->second->viewDisplayLink = nil;
+    }
+#endif
     surfaces_.erase(it);
   }
   updateDisplayLinkState();
@@ -1032,28 +1111,63 @@ SurfaceState* HostMac::findSurface(uint64_t surfaceId) {
 }
 
 void HostMac::updateDisplayLinkState() {
-  if (!displayLink_) {
-    return;
-  }
-  bool shouldRun = false;
+  bool shouldRunCv = false;
   for (const auto& entry : surfaces_) {
-    if (entry.second && entry.second->frameConfig.framePolicy == FramePolicy::Continuous) {
-      shouldRun = true;
-      break;
+    if (!entry.second) {
+      continue;
+    }
+    const bool wantsContinuous = entry.second->frameConfig.framePolicy == FramePolicy::Continuous;
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+    if (entry.second->viewDisplayLink) {
+      entry.second->viewDisplayLink.paused = !wantsContinuous;
+      continue;
+    }
+#endif
+    if (wantsContinuous) {
+      shouldRunCv = true;
     }
   }
-  if (shouldRun && !CVDisplayLinkIsRunning(displayLink_)) {
-    CVDisplayLinkStart(displayLink_);
-  } else if (!shouldRun && CVDisplayLinkIsRunning(displayLink_)) {
-    CVDisplayLinkStop(displayLink_);
+
+  if (!cvDisplayLink_) {
+    return;
   }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  if (shouldRunCv && !CVDisplayLinkIsRunning(cvDisplayLink_)) {
+    CVDisplayLinkStart(cvDisplayLink_);
+  } else if (!shouldRunCv && CVDisplayLinkIsRunning(cvDisplayLink_)) {
+    CVDisplayLinkStop(cvDisplayLink_);
+  }
+#pragma clang diagnostic pop
 }
 
 void HostMac::handleDisplayLinkTick() {
   for (auto& entry : surfaces_) {
     if (entry.second && entry.second->frameConfig.framePolicy == FramePolicy::Continuous) {
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+      if (entry.second->viewDisplayLink) {
+        continue;
+      }
+#endif
       requestFrame(entry.second->surfaceId, false);
     }
+  }
+}
+
+void HostMac::handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link) {
+  auto* surface = findSurface(surfaceId);
+  if (!surface) {
+    return;
+  }
+  if (link) {
+    CFTimeInterval duration = link.duration;
+    if (duration > 0.0) {
+      surface->displayInterval = std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::duration<double>(duration));
+    }
+  }
+  if (surface->frameConfig.framePolicy == FramePolicy::Continuous) {
+    requestFrame(surface->surfaceId, false);
   }
 }
 

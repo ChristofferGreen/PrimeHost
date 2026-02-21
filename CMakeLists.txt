@@ -31,11 +31,15 @@ endfunction()
 
 set(PRIMEHOST_SOURCES
   src/PrimeHost.cpp
+  src/PrimeHostAudio.cpp
   src/TextBuffer.h
 )
 
 if(APPLE)
-  list(APPEND PRIMEHOST_SOURCES src/platform/macos/HostMac.mm)
+  list(APPEND PRIMEHOST_SOURCES
+    src/platform/macos/HostMac.mm
+    src/platform/macos/AudioMac.mm
+  )
 endif()
 
 add_library(PrimeHost ${PRIMEHOST_SOURCES})
@@ -57,6 +61,7 @@ if(APPLE)
   target_link_libraries(PrimeHost PRIVATE ${COCOA_LIBRARY} ${METAL_LIBRARY} ${QUARTZCORE_LIBRARY})
   if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(src/platform/macos/HostMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    set_source_files_properties(src/platform/macos/AudioMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   endif()
 endif()
 
@@ -66,6 +71,7 @@ if(PRIMEHOST_BUILD_TESTS)
 
   add_executable(PrimeHost_tests
     tests/unit/test_main.cpp
+    tests/unit/test_audio_smoke.cpp
     tests/unit/test_smoke.cpp
     tests/unit/test_text_buffer.cpp
   )

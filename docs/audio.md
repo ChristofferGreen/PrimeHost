@@ -56,7 +56,7 @@ struct AudioStreamConfig {
 
 struct AudioDeviceInfo {
   AudioDeviceId id{};
-  std::string name;
+  Utf8TextView name;
   bool isDefault = false;
   AudioFormat preferredFormat{};
 };
@@ -76,20 +76,23 @@ class AudioHost {
 public:
   virtual ~AudioHost() = default;
 
-  virtual std::vector<AudioDeviceInfo> enumerateOutputDevices() = 0;
-  virtual AudioDeviceId defaultOutputDevice() const = 0;
+  virtual HostResult<size_t> outputDevices(std::span<AudioDeviceInfo> outDevices) const = 0;
+  virtual HostResult<AudioDeviceInfo> outputDeviceInfo(AudioDeviceId deviceId) const = 0;
+  virtual HostResult<AudioDeviceId> defaultOutputDevice() const = 0;
 
-  virtual bool openStream(AudioDeviceId device,
-                          const AudioStreamConfig& config,
-                          AudioCallback callback,
-                          void* userData) = 0;
+  virtual HostStatus openStream(AudioDeviceId deviceId,
+                                const AudioStreamConfig& config,
+                                AudioCallback callback,
+                                void* userData) = 0;
 
   virtual void startStream() = 0;
   virtual void stopStream() = 0;
   virtual void closeStream() = 0;
 
-  virtual AudioStreamConfig activeConfig() const = 0;
+  virtual HostResult<AudioStreamConfig> activeConfig() const = 0;
 };
+
+HostResult<std::unique_ptr<AudioHost>> createAudioHost();
 
 } // namespace PrimeHost
 ```

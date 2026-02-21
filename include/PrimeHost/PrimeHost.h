@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "PrimeHost/Audio.h"
 #include "PrimeHost/Fps.h"
 #include "PrimeHost/Host.h"
 
