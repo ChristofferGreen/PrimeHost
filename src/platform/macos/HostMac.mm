@@ -4,6 +4,8 @@
 #import <CoreVideo/CoreVideo.h>
 #import <CoreHaptics/CoreHaptics.h>
 #import <GameController/GameController.h>
+#import <GameController/GCDualShockGamepad.h>
+#import <GameController/GCDualSenseGamepad.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -1294,6 +1296,19 @@ void HostMac::handleGamepadConnected(GCController* controller) {
         host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::RightTrigger), value);
       });
     };
+
+    if (@available(macOS 11.0, *)) {
+      if ([gamepad isKindOfClass:[GCDualShockGamepad class]]) {
+        auto* dualShock = static_cast<GCDualShockGamepad*>(gamepad);
+        button_handler(dualShock.touchpadButton, static_cast<uint32_t>(GamepadButtonId::Misc));
+      }
+    }
+    if (@available(macOS 11.3, *)) {
+      if ([gamepad isKindOfClass:[GCDualSenseGamepad class]]) {
+        auto* dualSense = static_cast<GCDualSenseGamepad*>(gamepad);
+        button_handler(dualSense.touchpadButton, static_cast<uint32_t>(GamepadButtonId::Misc));
+      }
+    }
   } else if (controller.microGamepad) {
     GCMicroGamepad* gamepad = controller.microGamepad;
     if (gamepad.dpad) {

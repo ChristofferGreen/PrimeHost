@@ -90,6 +90,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_main.cpp
     tests/unit/test_audio_smoke.cpp
     tests/unit/test_gamepad_profiles.cpp
+    tests/unit/test_gamepad_ids.cpp
     tests/unit/test_smoke.cpp
     tests/unit/test_text_buffer.cpp
   )

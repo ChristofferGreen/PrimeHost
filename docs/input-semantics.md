@@ -53,6 +53,7 @@ This document defines coordinate systems, units, and ranges for PrimeHost input 
 - `GamepadButtonId::DpadLeft`
 - `GamepadButtonId::DpadRight`
 - `GamepadButtonId::Misc` (Share/Capture/etc.)
+  - On DualShock/DualSense, the touchpad button maps to `Misc`.
 
 ### Canonical Axis IDs
 - `GamepadAxisId::LeftX`
