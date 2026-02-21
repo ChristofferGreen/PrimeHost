@@ -26,6 +26,15 @@ PH_TEST("primehost.devices", "count query") {
   if (filled) {
     PH_CHECK(filled.value() == devices.size());
   }
+
+  if (countResult.value() > 0u) {
+    std::vector<DeviceInfo> tooSmall(countResult.value() - 1u);
+    auto tooSmallResult = host->devices(tooSmall);
+    PH_CHECK(!tooSmallResult.has_value());
+    if (!tooSmallResult.has_value()) {
+      PH_CHECK(tooSmallResult.error().code == HostErrorCode::BufferTooSmall);
+    }
+  }
 }
 
 TEST_SUITE_END();

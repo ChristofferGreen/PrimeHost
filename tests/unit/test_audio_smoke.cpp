@@ -95,6 +95,15 @@ PH_TEST("primehost.audio", "device count query") {
   if (fillResult) {
     PH_CHECK(fillResult.value() == devices.size());
   }
+
+  if (countResult.value() > 0u) {
+    std::vector<AudioDeviceInfo> tooSmall(countResult.value() - 1u);
+    auto tooSmallResult = audio->outputDevices(tooSmall);
+    PH_CHECK(!tooSmallResult.has_value());
+    if (!tooSmallResult.has_value()) {
+      PH_CHECK(tooSmallResult.error().code == HostErrorCode::BufferTooSmall);
+    }
+  }
 }
 
 TEST_SUITE_END();
