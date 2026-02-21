@@ -65,6 +65,10 @@ fully wired up. The current matching tokens are:
 - Separate button-style controls from analog axes (triggers are axes).
 - Use the same IDs for equivalent physical controls across layouts.
 
+### Canonical Control IDs
+- Buttons use `GamepadButtonId` (see `docs/input-semantics.md`).
+- Axes use `GamepadAxisId` (see `docs/input-semantics.md`).
+
 ## Device Events
 - `DeviceEvent` is emitted on connect/disconnect.
 - `deviceId` is stable for the device lifetime.

@@ -61,6 +61,7 @@ if(APPLE)
   find_library(AUDIOTOOLBOX_LIBRARY AudioToolbox)
   find_library(AUDIOUNIT_LIBRARY AudioUnit)
   find_library(COREAUDIO_LIBRARY CoreAudio)
+  find_library(COREHAPTICS_LIBRARY CoreHaptics)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
   target_link_libraries(PrimeHost PRIVATE
     ${COCOA_LIBRARY}
@@ -69,6 +70,7 @@ if(APPLE)
     ${AUDIOTOOLBOX_LIBRARY}
     ${AUDIOUNIT_LIBRARY}
     ${COREAUDIO_LIBRARY}
+    ${COREHAPTICS_LIBRARY}
     ${QUARTZCORE_LIBRARY}
   )
   if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")

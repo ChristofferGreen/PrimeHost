@@ -216,6 +216,34 @@ struct ScrollEvent {
   bool isLines = false;
 };
 
+enum class GamepadButtonId : uint32_t {
+  South = 0u,
+  East = 1u,
+  West = 2u,
+  North = 3u,
+  LeftBumper = 4u,
+  RightBumper = 5u,
+  Back = 6u,
+  Start = 7u,
+  Guide = 8u,
+  LeftStick = 9u,
+  RightStick = 10u,
+  DpadUp = 11u,
+  DpadDown = 12u,
+  DpadLeft = 13u,
+  DpadRight = 14u,
+  Misc = 15u,
+};
+
+enum class GamepadAxisId : uint32_t {
+  LeftX = 0u,
+  LeftY = 1u,
+  RightX = 2u,
+  RightY = 3u,
+  LeftTrigger = 4u,
+  RightTrigger = 5u,
+};
+
 struct GamepadButtonEvent {
   uint32_t deviceId = 0u;
   uint32_t controlId = 0u;

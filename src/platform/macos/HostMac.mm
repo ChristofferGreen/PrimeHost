@@ -1,6 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
 #import <CoreVideo/CoreVideo.h>
+#import <CoreHaptics/CoreHaptics.h>
 #import <GameController/GameController.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CADisplayLink.h>
@@ -264,6 +265,8 @@ public:
   void handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link);
   void handleGamepadConnected(GCController* controller);
   void handleGamepadDisconnected(GCController* controller);
+  void enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value);
+  void enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float value);
 
 private:
   struct QueuedEvent {
@@ -289,6 +292,7 @@ private:
   std::vector<uint32_t> deviceOrder_;
   std::unordered_map<void*, uint32_t> gamepadIds_;
   std::unordered_map<uint32_t, GCController*> gamepadControllers_;
+  std::unordered_map<uint32_t, CHHapticEngine*> hapticsEngines_;
   id gamepadConnectObserver_ = nil;
   id gamepadDisconnectObserver_ = nil;
   std::vector<QueuedEvent> eventQueue_;
@@ -636,6 +640,12 @@ HostMac::~HostMac() {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadDisconnectObserver_];
     gamepadDisconnectObserver_ = nil;
   }
+  for (auto& entry : hapticsEngines_) {
+    if (entry.second) {
+      [entry.second stopWithCompletionHandler:nil];
+    }
+  }
+  hapticsEngines_.clear();
   if (cvDisplayLink_) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -652,7 +662,11 @@ HostResult<HostCapabilities> HostMac::hostCapabilities() const {
   caps.supportsFileDialogs = false;
   caps.supportsRelativePointer = false;
   caps.supportsIme = true;
-  caps.supportsHaptics = false;
+  if (@available(macOS 11.0, *)) {
+    caps.supportsHaptics = true;
+  } else {
+    caps.supportsHaptics = false;
+  }
   caps.supportsHeadless = false;
   return caps;
 }
@@ -881,9 +895,67 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
 }
 
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
-  if (gamepadControllers_.find(rumble.deviceId) == gamepadControllers_.end()) {
+  auto controllerIt = gamepadControllers_.find(rumble.deviceId);
+  if (controllerIt == gamepadControllers_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidDevice});
   }
+
+  if (@available(macOS 11.0, *)) {
+    GCController* controller = controllerIt->second;
+    if (!controller || !controller.haptics) {
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
+    }
+
+    auto engineIt = hapticsEngines_.find(rumble.deviceId);
+    CHHapticEngine* engine = nil;
+    if (engineIt != hapticsEngines_.end()) {
+      engine = engineIt->second;
+    }
+    if (!engine) {
+      engine = [controller.haptics createEngineWithLocality:GCHapticsLocalityDefault];
+      if (!engine) {
+        return std::unexpected(HostError{HostErrorCode::Unsupported});
+      }
+      engine.playsHapticsOnly = YES;
+      [engine startWithCompletionHandler:nil];
+      hapticsEngines_[rumble.deviceId] = engine;
+    }
+
+    double duration = static_cast<double>(rumble.duration.count()) / 1000.0;
+    if (duration <= 0.0) {
+      [engine stopWithCompletionHandler:nil];
+      return {};
+    }
+
+    float intensityValue = std::clamp(std::max(rumble.lowFrequency, rumble.highFrequency), 0.0f, 1.0f);
+    float sharpnessValue = std::clamp(rumble.highFrequency, 0.0f, 1.0f);
+
+    CHHapticEventParameter* intensity =
+        [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity
+                                                      value:intensityValue];
+    CHHapticEventParameter* sharpness =
+        [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness
+                                                      value:sharpnessValue];
+
+    CHHapticEvent* event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
+                                                         parameters:@[intensity, sharpness]
+                                                       relativeTime:0
+                                                           duration:duration];
+    NSError* error = nil;
+    CHHapticPattern* pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
+    if (!pattern || error) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    id<CHHapticPatternPlayer> player = [engine createPlayerWithPattern:pattern error:&error];
+    if (!player || error) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    if (![player startAtTime:CHHapticTimeImmediate error:&error] || error) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    return {};
+  }
+
   return std::unexpected(HostError{HostErrorCode::Unsupported});
 }
 
@@ -1096,13 +1168,153 @@ void HostMac::handleGamepadConnected(GCController* controller) {
   if (controller.extendedGamepad) {
     record.caps.hasAnalogButtons = true;
   }
+  if (controller.microGamepad) {
+    record.caps.hasAnalogButtons = true;
+  }
   if (auto profile = match_gamepad_profile(name)) {
     record.caps.hasAnalogButtons = record.caps.hasAnalogButtons || profile->hasAnalogButtons;
+  }
+  if (@available(macOS 11.0, *)) {
+    if (controller.haptics) {
+      record.caps.hasRumble = true;
+    }
   }
 
   devices_.emplace(deviceId, std::move(record));
   devices_[deviceId].info.name = devices_[deviceId].nameStorage;
   deviceOrder_.push_back(deviceId);
+
+  HostMac* host = this;
+  auto dispatch_to_main = ^(dispatch_block_t block) {
+    dispatch_async(dispatch_get_main_queue(), block);
+  };
+
+  if (controller.extendedGamepad) {
+    GCExtendedGamepad* gamepad = controller.extendedGamepad;
+
+    auto button_handler = ^(GCControllerButtonInput* button, uint32_t controlId) {
+      if (!button) {
+        return;
+      }
+      button.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+        (void)input;
+        dispatch_to_main(^{
+          host->enqueueGamepadButton(deviceId, controlId, pressed, value);
+        });
+      };
+    };
+
+    auto dpad_handler = ^(GCControllerDirectionPad* dpad) {
+      if (!dpad) {
+        return;
+      }
+      dpad.valueChangedHandler = ^(GCControllerDirectionPad* pad, float xValue, float yValue) {
+        (void)xValue;
+        (void)yValue;
+        dispatch_to_main(^{
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadUp), pad.up.isPressed, pad.up.value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadDown), pad.down.isPressed, pad.down.value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadLeft), pad.left.isPressed, pad.left.value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadRight), pad.right.isPressed, pad.right.value);
+        });
+      };
+    };
+
+    button_handler(gamepad.buttonA, static_cast<uint32_t>(GamepadButtonId::South));
+    button_handler(gamepad.buttonB, static_cast<uint32_t>(GamepadButtonId::East));
+    button_handler(gamepad.buttonX, static_cast<uint32_t>(GamepadButtonId::West));
+    button_handler(gamepad.buttonY, static_cast<uint32_t>(GamepadButtonId::North));
+    button_handler(gamepad.leftShoulder, static_cast<uint32_t>(GamepadButtonId::LeftBumper));
+    button_handler(gamepad.rightShoulder, static_cast<uint32_t>(GamepadButtonId::RightBumper));
+
+    if (@available(macOS 10.15, *)) {
+      button_handler(gamepad.buttonMenu, static_cast<uint32_t>(GamepadButtonId::Start));
+      if (gamepad.buttonOptions) {
+        button_handler(gamepad.buttonOptions, static_cast<uint32_t>(GamepadButtonId::Back));
+      }
+    }
+    if (@available(macOS 11.0, *)) {
+      if (gamepad.buttonHome) {
+        button_handler(gamepad.buttonHome, static_cast<uint32_t>(GamepadButtonId::Guide));
+      }
+    }
+    if (@available(macOS 10.14.1, *)) {
+      if (gamepad.leftThumbstickButton) {
+        button_handler(gamepad.leftThumbstickButton, static_cast<uint32_t>(GamepadButtonId::LeftStick));
+      }
+      if (gamepad.rightThumbstickButton) {
+        button_handler(gamepad.rightThumbstickButton, static_cast<uint32_t>(GamepadButtonId::RightStick));
+      }
+    }
+
+    dpad_handler(gamepad.dpad);
+
+    gamepad.leftThumbstick.valueChangedHandler = ^(GCControllerDirectionPad* pad, float xValue, float yValue) {
+      dispatch_to_main(^{
+        host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::LeftX), xValue);
+        host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::LeftY), yValue);
+      });
+    };
+
+    gamepad.rightThumbstick.valueChangedHandler = ^(GCControllerDirectionPad* pad, float xValue, float yValue) {
+      dispatch_to_main(^{
+        host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::RightX), xValue);
+        host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::RightY), yValue);
+      });
+    };
+
+    gamepad.leftTrigger.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+      (void)input;
+      (void)pressed;
+      dispatch_to_main(^{
+        host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::LeftTrigger), value);
+      });
+    };
+    gamepad.rightTrigger.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+      (void)input;
+      (void)pressed;
+      dispatch_to_main(^{
+        host->enqueueGamepadAxis(deviceId, static_cast<uint32_t>(GamepadAxisId::RightTrigger), value);
+      });
+    };
+  } else if (controller.microGamepad) {
+    GCMicroGamepad* gamepad = controller.microGamepad;
+    if (gamepad.dpad) {
+      gamepad.dpad.valueChangedHandler = ^(GCControllerDirectionPad* pad, float xValue, float yValue) {
+        (void)xValue;
+        (void)yValue;
+        dispatch_to_main(^{
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadUp), pad.up.isPressed, pad.up.value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadDown), pad.down.isPressed, pad.down.value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadLeft), pad.left.isPressed, pad.left.value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadRight), pad.right.isPressed, pad.right.value);
+        });
+      };
+    }
+    if (gamepad.buttonA) {
+      gamepad.buttonA.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+        dispatch_to_main(^{
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::South), pressed, value);
+        });
+      };
+    }
+    if (gamepad.buttonX) {
+      gamepad.buttonX.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+        dispatch_to_main(^{
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::West), pressed, value);
+        });
+      };
+    }
+    if (@available(macOS 10.15, *)) {
+      if (gamepad.buttonMenu) {
+        gamepad.buttonMenu.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+          dispatch_to_main(^{
+            host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::Start), pressed, value);
+          });
+        };
+      }
+    }
+  }
 
   Event event{};
   event.scope = Event::Scope::Global;
@@ -1123,6 +1335,13 @@ void HostMac::handleGamepadDisconnected(GCController* controller) {
   uint32_t deviceId = it->second;
   gamepadIds_.erase(it);
   gamepadControllers_.erase(deviceId);
+  auto hapticsIt = hapticsEngines_.find(deviceId);
+  if (hapticsIt != hapticsEngines_.end()) {
+    if (hapticsIt->second) {
+      [hapticsIt->second stopWithCompletionHandler:nil];
+    }
+    hapticsEngines_.erase(hapticsIt);
+  }
   devices_.erase(deviceId);
   deviceOrder_.erase(std::remove(deviceOrder_.begin(), deviceOrder_.end(), deviceId), deviceOrder_.end());
 
@@ -1130,6 +1349,33 @@ void HostMac::handleGamepadDisconnected(GCController* controller) {
   event.scope = Event::Scope::Global;
   event.time = std::chrono::steady_clock::now();
   event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = DeviceType::Gamepad, .connected = false};
+  enqueueEvent(std::move(event));
+}
+
+void HostMac::enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value) {
+  GamepadButtonEvent button{};
+  button.deviceId = deviceId;
+  button.controlId = controlId;
+  button.pressed = pressed;
+  button.value = value;
+
+  Event event{};
+  event.scope = Event::Scope::Global;
+  event.time = std::chrono::steady_clock::now();
+  event.payload = button;
+  enqueueEvent(std::move(event));
+}
+
+void HostMac::enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float value) {
+  GamepadAxisEvent axis{};
+  axis.deviceId = deviceId;
+  axis.controlId = controlId;
+  axis.value = value;
+
+  Event event{};
+  event.scope = Event::Scope::Global;
+  event.time = std::chrono::steady_clock::now();
+  event.payload = axis;
   enqueueEvent(std::move(event));
 }
 

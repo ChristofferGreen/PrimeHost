@@ -171,6 +171,34 @@ struct ScrollEvent {
   bool isLines = false;
 };
 
+enum class GamepadButtonId : uint32_t {
+  South = 0u,
+  East = 1u,
+  West = 2u,
+  North = 3u,
+  LeftBumper = 4u,
+  RightBumper = 5u,
+  Back = 6u,
+  Start = 7u,
+  Guide = 8u,
+  LeftStick = 9u,
+  RightStick = 10u,
+  DpadUp = 11u,
+  DpadDown = 12u,
+  DpadLeft = 13u,
+  DpadRight = 14u,
+  Misc = 15u,
+};
+
+enum class GamepadAxisId : uint32_t {
+  LeftX = 0u,
+  LeftY = 1u,
+  RightX = 2u,
+  RightY = 3u,
+  LeftTrigger = 4u,
+  RightTrigger = 5u,
+};
+
 struct GamepadButtonEvent {
   uint32_t deviceId = 0u;
   uint32_t controlId = 0u;
@@ -350,6 +378,16 @@ struct AudioCallbackContext {
   bool isUnderrun = false;
 };
 
+struct AudioDeviceEvent {
+  AudioDeviceId deviceId = 0;
+  bool connected = true;
+  bool isDefault = false;
+};
+
+struct AudioCallbacks {
+  std::function<void(const AudioDeviceEvent&)> onDeviceEvent;
+};
+
 using AudioCallback = void (*)(std::span<float> interleaved,
                                const AudioCallbackContext& ctx,
                                void* userData);
@@ -367,11 +405,13 @@ public:
                                 AudioCallback callback,
                                 void* userData) = 0;
 
-  virtual void startStream() = 0;
-  virtual void stopStream() = 0;
-  virtual void closeStream() = 0;
+  virtual HostStatus startStream() = 0;
+  virtual HostStatus stopStream() = 0;
+  virtual HostStatus closeStream() = 0;
 
   virtual HostResult<AudioStreamConfig> activeConfig() const = 0;
+
+  virtual HostStatus setCallbacks(AudioCallbacks callbacks) = 0;
 };
 
 HostResult<std::unique_ptr<AudioHost>> createAudioHost();

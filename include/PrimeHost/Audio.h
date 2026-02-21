@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 
@@ -44,6 +45,16 @@ struct AudioCallbackContext {
   bool isUnderrun = false;
 };
 
+struct AudioDeviceEvent {
+  AudioDeviceId deviceId = 0;
+  bool connected = true;
+  bool isDefault = false;
+};
+
+struct AudioCallbacks {
+  std::function<void(const AudioDeviceEvent&)> onDeviceEvent;
+};
+
 using AudioCallback = void (*)(std::span<float> interleaved,
                                const AudioCallbackContext& ctx,
                                void* userData);
@@ -66,6 +77,8 @@ public:
   virtual HostStatus closeStream() = 0;
 
   virtual HostResult<AudioStreamConfig> activeConfig() const = 0;
+
+  virtual HostStatus setCallbacks(AudioCallbacks callbacks) = 0;
 };
 
 HostResult<std::unique_ptr<AudioHost>> createAudioHost();

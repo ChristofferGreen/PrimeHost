@@ -35,3 +35,29 @@ This document defines coordinate systems, units, and ranges for PrimeHost input 
 - `controlId` maps to the canonical layout defined in `docs/input-devices.md`.
 - Axis values are in [-1, 1]; triggers in [0, 1].
 - `GamepadButtonEvent::value` (if present) is in [0, 1].
+
+### Canonical Button IDs
+- `GamepadButtonId::South` (A / Cross)
+- `GamepadButtonId::East` (B / Circle)
+- `GamepadButtonId::West` (X / Square)
+- `GamepadButtonId::North` (Y / Triangle)
+- `GamepadButtonId::LeftBumper`
+- `GamepadButtonId::RightBumper`
+- `GamepadButtonId::Back`
+- `GamepadButtonId::Start`
+- `GamepadButtonId::Guide`
+- `GamepadButtonId::LeftStick`
+- `GamepadButtonId::RightStick`
+- `GamepadButtonId::DpadUp`
+- `GamepadButtonId::DpadDown`
+- `GamepadButtonId::DpadLeft`
+- `GamepadButtonId::DpadRight`
+- `GamepadButtonId::Misc` (Share/Capture/etc.)
+
+### Canonical Axis IDs
+- `GamepadAxisId::LeftX`
+- `GamepadAxisId::LeftY`
+- `GamepadAxisId::RightX`
+- `GamepadAxisId::RightY`
+- `GamepadAxisId::LeftTrigger`
+- `GamepadAxisId::RightTrigger`

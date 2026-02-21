@@ -68,9 +68,22 @@ struct AudioCallbackContext {
   bool isUnderrun = false;
 };
 
+struct AudioDeviceEvent {
+  AudioDeviceId deviceId = 0;
+  bool connected = true;
+  bool isDefault = false;
+};
+
+struct AudioCallbacks {
+  std::function<void(const AudioDeviceEvent&)> onDeviceEvent;
+};
+
 using AudioCallback = void (*)(std::span<float> interleaved,
                                const AudioCallbackContext& ctx,
                                void* userData);
+
+// Note: the callback always receives interleaved float32 samples. Backends convert to the
+// configured output format (e.g., Int16 or non-interleaved) after the callback returns.
 
 class AudioHost {
 public:
@@ -85,11 +98,13 @@ public:
                                 AudioCallback callback,
                                 void* userData) = 0;
 
-  virtual void startStream() = 0;
-  virtual void stopStream() = 0;
-  virtual void closeStream() = 0;
+  virtual HostStatus startStream() = 0;
+  virtual HostStatus stopStream() = 0;
+  virtual HostStatus closeStream() = 0;
 
   virtual HostResult<AudioStreamConfig> activeConfig() const = 0;
+
+  virtual HostStatus setCallbacks(AudioCallbacks callbacks) = 0;
 };
 
 HostResult<std::unique_ptr<AudioHost>> createAudioHost();
@@ -98,7 +113,7 @@ HostResult<std::unique_ptr<AudioHost>> createAudioHost();
 ```
 
 ## Device Events
-- Audio device connect/disconnect should be surfaced via `DeviceEvent` or a dedicated audio event.
+- Audio device connect/disconnect should be surfaced via `AudioDeviceEvent`.
 - Default device changes should be reported so the engine can re-open a stream.
 
 ## Open Questions

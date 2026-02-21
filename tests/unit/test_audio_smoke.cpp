@@ -13,6 +13,10 @@ PH_TEST("primehost.audio", "create audio host") {
     return;
   }
   PH_CHECK(result.value() != nullptr);
+  AudioCallbacks callbacks{};
+  callbacks.onDeviceEvent = [](const AudioDeviceEvent&) {};
+  auto status = result.value()->setCallbacks(std::move(callbacks));
+  PH_CHECK(status.has_value());
 }
 
 TEST_SUITE_END();
