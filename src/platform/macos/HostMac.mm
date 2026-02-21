@@ -18,6 +18,7 @@
 #include "PrimeHost/Host.h"
 #include "DeviceNameMatch.h"
 #include "FrameConfigValidation.h"
+#include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
 #include "TextBuffer.h"
@@ -1042,7 +1043,6 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
   timing.delta = std::chrono::duration_cast<std::chrono::nanoseconds>(delta);
   timing.frameIndex = surface->frameIndex++;
 
-  FrameDiagnostics diag{};
   std::optional<std::chrono::nanoseconds> target = surface->frameConfig.frameInterval;
   if (!target) {
     if (surface->displayInterval) {
@@ -1051,12 +1051,7 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
       target = displayInterval_;
     }
   }
-  if (target) {
-    diag.targetInterval = *target;
-    diag.actualInterval = timing.delta;
-    diag.missedDeadline = timing.delta > diag.targetInterval;
-  }
-  diag.wasThrottled = surface->frameConfig.framePolicy == FramePolicy::Capped;
+  FrameDiagnostics diag = buildFrameDiagnostics(target, timing.delta, surface->frameConfig.framePolicy);
 
   callbacks_.onFrame(surfaceId, timing, diag);
   return {};
