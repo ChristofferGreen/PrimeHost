@@ -140,6 +140,9 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 
+## Validation Helpers
+- `validateFrameConfig(const FrameConfig&, const SurfaceCapabilities&)` (see `PrimeHost/FrameConfigValidation.h`).
+
 ### Error Handling (Example)
 ```cpp
 auto caps = host.surfaceCapabilities(surfaceId);

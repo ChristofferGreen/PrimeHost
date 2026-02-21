@@ -17,7 +17,7 @@
 
 #include "PrimeHost/Host.h"
 #include "DeviceNameMatch.h"
-#include "FrameConfigValidation.h"
+#include "PrimeHost/FrameConfigValidation.h"
 #include "FrameConfigUtil.h"
 #include "FrameConfigDefaults.h"
 #include "FrameDiagnosticsUtil.h"

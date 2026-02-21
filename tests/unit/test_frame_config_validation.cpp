@@ -1,4 +1,4 @@
-#include "FrameConfigValidation.h"
+#include "PrimeHost/FrameConfigValidation.h"
 
 #include "tests/unit/test_helpers.h"
 
