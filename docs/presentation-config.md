@@ -57,6 +57,12 @@ These defaults guide the initial Apple Silicon implementation and are expected t
 - Present gating should prevent presenting more often than display interval when enabled.
 - Continuous mode is optional and should be used for animation-heavy content.
 
+## FramePolicy::Capped Defaults
+- If `FramePolicy::Capped` is selected and `frameInterval` is unset or zero, PrimeHost will default
+  the interval to the platform display refresh (when available).
+- If no platform interval is available, the backend should leave `frameInterval` unchanged and
+  rely on caller configuration.
+
 ## Latency Expectations (macOS)
 - With vsync enabled and double buffering, expect up to ~1 frame of latency in the worst case.
 - Rendering as late as possible before v-blank (via `CVDisplayLink`) minimizes average latency.
