@@ -95,6 +95,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_devices.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
+    tests/unit/test_frame_config_query.cpp
     tests/unit/test_frame_config_util.cpp
     tests/unit/test_frame_diagnostics.cpp
     tests/unit/test_frame_limiter.cpp

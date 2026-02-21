@@ -332,6 +332,7 @@ public:
 
   HostStatus requestFrame(SurfaceId surfaceId, bool bypassCap) override;
   HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) override;
+  HostResult<FrameConfig> frameConfig(SurfaceId surfaceId) const override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -371,6 +372,7 @@ private:
   void enqueueEvent(Event event, std::string text = {});
   void pumpEvents(bool wait);
   SurfaceState* findSurface(uint64_t surfaceId);
+  const SurfaceState* findSurface(uint64_t surfaceId) const;
   void updateDisplayLinkState();
 
   NSApplication* app_ = nullptr;
@@ -1100,6 +1102,14 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
   return {};
 }
 
+HostResult<FrameConfig> HostMac::frameConfig(SurfaceId surfaceId) const {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  return surface->frameConfig;
+}
+
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
   auto controllerIt = gamepadControllers_.find(rumble.deviceId);
   if (controllerIt == gamepadControllers_.end()) {
@@ -1780,6 +1790,14 @@ void HostMac::pumpEvents(bool wait) {
 }
 
 SurfaceState* HostMac::findSurface(uint64_t surfaceId) {
+  auto it = surfaces_.find(surfaceId);
+  if (it == surfaces_.end()) {
+    return nullptr;
+  }
+  return it->second.get();
+}
+
+const SurfaceState* HostMac::findSurface(uint64_t surfaceId) const {
   auto it = surfaces_.find(surfaceId);
   if (it == surfaces_.end()) {
     return nullptr;

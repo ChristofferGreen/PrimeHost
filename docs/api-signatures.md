@@ -284,6 +284,7 @@ public:
 
   virtual HostStatus requestFrame(SurfaceId surfaceId, bool bypassCap) = 0;
   virtual HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) = 0;
+  virtual HostResult<FrameConfig> frameConfig(SurfaceId surfaceId) const = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,
