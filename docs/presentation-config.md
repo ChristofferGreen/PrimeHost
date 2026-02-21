@@ -42,6 +42,12 @@ These defaults guide the initial Apple Silicon implementation and are expected t
 | `Smooth` | Favor stable cadence; 3 buffers; vsync on; present gate enabled. |
 | `Uncapped` | No cap; present gate optional; vsync may be off. |
 
+## BufferCount Defaults
+- `bufferCount = 0` lets the backend choose a present-mode-specific default.
+  - `LowLatency` prefers the minimum buffer count.
+  - `Smooth` prefers 3 buffers when supported.
+  - `Uncapped` prefers the maximum buffer count.
+
 ## Platform Recommendations
 | Platform | Backend | Swapchain/Layer | Buffer Count | Notes |
 | --- | --- | --- | --- | --- |
