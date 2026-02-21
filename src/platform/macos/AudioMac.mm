@@ -34,6 +34,9 @@ public:
 
   HostResult<size_t> outputDevices(std::span<AudioDeviceInfo> outDevices) const override {
     refreshDevices(false);
+    if (outDevices.empty()) {
+      return deviceOrder_.size();
+    }
     if (outDevices.size() < deviceOrder_.size()) {
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }

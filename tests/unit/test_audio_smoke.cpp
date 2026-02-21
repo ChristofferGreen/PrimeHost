@@ -2,6 +2,8 @@
 
 #include "tests/unit/test_helpers.h"
 
+#include <vector>
+
 using namespace PrimeHost;
 
 TEST_SUITE_BEGIN("primehost.audio");
@@ -67,6 +69,32 @@ PH_TEST("primehost.audio", "open stream updates active config") {
   }
 
   audio->closeStream();
+}
+
+PH_TEST("primehost.audio", "device count query") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto countResult = audio->outputDevices({});
+  PH_CHECK(countResult.has_value());
+  if (!countResult) {
+    return;
+  }
+
+  if (countResult.value() == 0u) {
+    return;
+  }
+
+  std::vector<AudioDeviceInfo> devices(countResult.value());
+  auto fillResult = audio->outputDevices(devices);
+  PH_CHECK(fillResult.has_value());
+  if (fillResult) {
+    PH_CHECK(fillResult.value() == devices.size());
+  }
 }
 
 TEST_SUITE_END();
