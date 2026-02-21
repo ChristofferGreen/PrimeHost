@@ -93,6 +93,7 @@ Cross-platform considerations remain part of the public API design.
 - Localization and IME language info.
 - Background task/keep-alive hooks (mobile).
 - System tray/menu-bar integration (desktop).
+- IME composition caret/selection placement for candidate windows.
 
 ## Non-Responsibilities
 - UI layout, widget state, focus policy.

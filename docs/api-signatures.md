@@ -411,6 +411,12 @@ public:
   virtual HostResult<LocaleInfo> localeInfo() const = 0;
   virtual HostResult<Utf8TextView> imeLanguageTag() const = 0;
 
+  virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,
+                                           int32_t x,
+                                           int32_t y,
+                                           int32_t width,
+                                           int32_t height) = 0;
+
   virtual HostResult<uint64_t> beginBackgroundTask(Utf8TextView reason) = 0;
   virtual HostStatus endBackgroundTask(uint64_t token) = 0;
 

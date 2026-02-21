@@ -58,6 +58,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Localization / IME Language (Draft)
 - Query current locale and active IME language tag.
 - Default: platform locale; IME language may be empty when unavailable.
+- IME composition caret/selection placement to position candidate windows.
 
 ## Background Tasks (Draft)
 - Keep-alive/background task tokens for mobile platforms.
@@ -176,6 +177,7 @@ for (const auto& evt : batch->events) {
 - Localization/IME language info (draft).
 - Background task hooks (draft).
 - System tray/menu-bar integration (draft).
+- IME composition caret/selection placement (draft).
 
 ## FPS Utility
 - `FpsTracker`, `FpsStats`, `computeFpsStats`
