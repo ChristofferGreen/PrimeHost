@@ -17,6 +17,7 @@
 
 #include "PrimeHost/Host.h"
 #include "DeviceNameMatch.h"
+#include "FrameConfigValidation.h"
 #include "GamepadProfiles.h"
 #include "TextBuffer.h"
 
@@ -1048,6 +1049,14 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
   auto* surface = findSurface(surfaceId.value);
   if (!surface) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  auto caps = surfaceCapabilities(surfaceId);
+  if (!caps) {
+    return std::unexpected(caps.error());
+  }
+  auto status = validateFrameConfig(config, caps.value());
+  if (!status) {
+    return status;
   }
   surface->frameConfig = config;
   updateDisplayLinkState();

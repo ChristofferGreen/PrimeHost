@@ -92,6 +92,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_main.cpp
     tests/unit/test_audio_smoke.cpp
     tests/unit/test_device_name_match.cpp
+    tests/unit/test_frame_config_validation.cpp
     tests/unit/test_gamepad_profiles.cpp
     tests/unit/test_gamepad_ids.cpp
     tests/unit/test_smoke.cpp
