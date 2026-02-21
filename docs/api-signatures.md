@@ -1,58 +1,27 @@
-#pragma once
+# PrimeHost API Signatures (Draft)
 
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <optional>
-#include <span>
-#include <string>
-#include <string_view>
-#include <variant>
-#include <vector>
-#include <expected>
+This document lists the current public API signatures from headers plus draft signatures for planned subsystems.
 
+## Host (from `include/PrimeHost/Host.h`)
+```cpp
 namespace PrimeHost {
 
 using Utf8TextView = std::string_view;
 
 struct SurfaceId {
   uint64_t value = 0u;
-
   constexpr bool isValid() const { return value != 0u; }
 };
 
-constexpr bool operator==(SurfaceId a, SurfaceId b) { return a.value == b.value; }
-constexpr bool operator!=(SurfaceId a, SurfaceId b) { return a.value != b.value; }
+constexpr bool operator==(SurfaceId a, SurfaceId b);
+constexpr bool operator!=(SurfaceId a, SurfaceId b);
 
-enum class PresentMode {
-  LowLatency,
-  Smooth,
-  Uncapped,
-};
+enum class PresentMode { LowLatency, Smooth, Uncapped };
+enum class FramePacingSource { Platform, HostLimiter };
+enum class FramePolicy { EventDriven, Continuous, Capped };
+enum class ColorFormat { B8G8R8A8_UNORM };
 
-enum class FramePacingSource {
-  Platform,
-  HostLimiter,
-};
-
-enum class FramePolicy {
-  EventDriven,
-  Continuous,
-  Capped,
-};
-
-enum class ColorFormat {
-  B8G8R8A8_UNORM,
-};
-
-enum class DeviceType {
-  Mouse,
-  Touch,
-  Pen,
-  Keyboard,
-  Gamepad,
-};
+enum class DeviceType { Mouse, Touch, Pen, Keyboard, Gamepad };
 
 using PresentModeMask = uint32_t;
 using ColorFormatMask = uint32_t;
@@ -80,12 +49,9 @@ enum class HostErrorCode {
   PlatformFailure,
 };
 
-struct HostError {
-  HostErrorCode code = HostErrorCode::Unknown;
-};
+struct HostError { HostErrorCode code = HostErrorCode::Unknown; };
 
 using HostStatus = std::expected<void, HostError>;
-
 template <typename T>
 using HostResult = std::expected<T, HostError>;
 
@@ -159,18 +125,8 @@ struct SurfaceConfig {
   std::optional<std::string> title;
 };
 
-enum class PointerPhase {
-  Down,
-  Move,
-  Up,
-  Cancel,
-};
-
-enum class PointerDeviceType {
-  Mouse,
-  Touch,
-  Pen,
-};
+enum class PointerPhase { Down, Move, Up, Cancel };
+enum class PointerDeviceType { Mouse, Touch, Pen };
 
 struct PointerEvent {
   uint32_t deviceId = 0u;
@@ -255,25 +211,12 @@ struct ResizeEvent {
   float scale = 1.0f;
 };
 
-enum class LifecyclePhase {
-  Created,
-  Suspended,
-  Resumed,
-  Backgrounded,
-  Foregrounded,
-  Destroyed,
-};
+enum class LifecyclePhase { Created, Suspended, Resumed, Backgrounded, Foregrounded, Destroyed };
 
-struct LifecycleEvent {
-  LifecyclePhase phase = LifecyclePhase::Created;
-};
+struct LifecycleEvent { LifecyclePhase phase = LifecyclePhase::Created; };
 
 struct Event {
-  enum class Scope {
-    Surface,
-    Global,
-  };
-
+  enum class Scope { Surface, Global };
   Scope scope = Scope::Surface;
   std::optional<SurfaceId> surfaceId;
   std::chrono::steady_clock::time_point time;
@@ -320,3 +263,161 @@ public:
 };
 
 } // namespace PrimeHost
+```
+
+## FPS Utility (from `include/PrimeHost/Fps.h`)
+```cpp
+namespace PrimeHost {
+
+struct FpsStats {
+  uint32_t sampleCount = 0u;
+  std::chrono::nanoseconds minFrameTime{0};
+  std::chrono::nanoseconds maxFrameTime{0};
+  std::chrono::nanoseconds meanFrameTime{0};
+  std::chrono::nanoseconds p50FrameTime{0};
+  std::chrono::nanoseconds p95FrameTime{0};
+  std::chrono::nanoseconds p99FrameTime{0};
+  double fps = 0.0;
+};
+
+class FpsTracker {
+public:
+  explicit FpsTracker(
+      size_t sampleCapacity = 120u,
+      std::chrono::nanoseconds reportInterval = std::chrono::seconds(1));
+  explicit FpsTracker(std::chrono::nanoseconds reportInterval);
+
+  void framePresented();
+  void reset();
+
+  FpsStats stats() const;
+  size_t sampleCapacity() const;
+  size_t sampleCount() const;
+  bool isWarmedUp() const;
+  bool shouldReport();
+  std::chrono::nanoseconds reportInterval() const;
+  void setReportInterval(std::chrono::nanoseconds interval);
+
+private:
+  size_t sampleCapacity_ = 0u;
+  size_t sampleCount_ = 0u;
+  std::chrono::nanoseconds reportInterval_{0};
+};
+
+FpsStats computeFpsStats(std::span<const std::chrono::nanoseconds> frameTimes);
+
+} // namespace PrimeHost
+```
+
+## Audio Output (Draft, from `docs/audio.md`)
+```cpp
+namespace PrimeHost {
+
+using AudioDeviceId = uint64_t;
+
+enum class SampleFormat {
+  Float32,
+  Int16,
+};
+
+struct AudioFormat {
+  uint32_t sampleRate = 48000;
+  uint16_t channels = 2;
+  SampleFormat format = SampleFormat::Float32;
+  bool interleaved = true;
+};
+
+struct AudioStreamConfig {
+  AudioFormat format{};
+  uint32_t bufferFrames = 512;
+  uint32_t periodFrames = 256;
+  std::chrono::nanoseconds targetLatency{0};
+};
+
+struct AudioDeviceInfo {
+  AudioDeviceId id{};
+  std::string name;
+  bool isDefault = false;
+  AudioFormat preferredFormat{};
+};
+
+struct AudioCallbackContext {
+  uint64_t frameIndex = 0;
+  std::chrono::steady_clock::time_point time;
+  uint32_t requestedFrames = 0;
+  bool isUnderrun = false;
+};
+
+using AudioCallback = void (*)(std::span<float> interleaved,
+                               const AudioCallbackContext& ctx,
+                               void* userData);
+
+class AudioHost {
+public:
+  virtual ~AudioHost() = default;
+
+  virtual std::vector<AudioDeviceInfo> enumerateOutputDevices() = 0;
+  virtual AudioDeviceId defaultOutputDevice() const = 0;
+
+  virtual bool openStream(AudioDeviceId device,
+                          const AudioStreamConfig& config,
+                          AudioCallback callback,
+                          void* userData) = 0;
+
+  virtual void startStream() = 0;
+  virtual void stopStream() = 0;
+  virtual void closeStream() = 0;
+
+  virtual AudioStreamConfig activeConfig() const = 0;
+};
+
+} // namespace PrimeHost
+```
+
+## Host Extensions (Draft)
+```cpp
+namespace PrimeHost {
+
+enum class PermissionType {
+  Camera,
+  Microphone,
+  Location,
+  Photos,
+  Notifications,
+};
+
+enum class PermissionStatus {
+  Unknown,
+  Granted,
+  Denied,
+  Restricted,
+};
+
+struct LocaleInfo {
+  Utf8TextView languageTag;
+  Utf8TextView regionTag;
+};
+
+class Host {
+public:
+  virtual HostResult<PermissionStatus> checkPermission(PermissionType type) const = 0;
+  virtual HostResult<PermissionStatus> requestPermission(PermissionType type) = 0;
+
+  virtual HostResult<uint64_t> beginIdleSleepInhibit(Utf8TextView reason) = 0;
+  virtual HostStatus endIdleSleepInhibit(uint64_t token) = 0;
+
+  virtual HostStatus setGamepadLight(uint32_t deviceId, float r, float g, float b) = 0;
+
+  virtual HostResult<LocaleInfo> localeInfo() const = 0;
+  virtual HostResult<Utf8TextView> imeLanguageTag() const = 0;
+
+  virtual HostResult<uint64_t> beginBackgroundTask(Utf8TextView reason) = 0;
+  virtual HostStatus endBackgroundTask(uint64_t token) = 0;
+
+  virtual HostResult<uint64_t> createTrayItem(Utf8TextView title) = 0;
+  virtual HostStatus updateTrayItemTitle(uint64_t trayId, Utf8TextView title) = 0;
+  virtual HostStatus removeTrayItem(uint64_t trayId) = 0;
+};
+
+} // namespace PrimeHost
+```

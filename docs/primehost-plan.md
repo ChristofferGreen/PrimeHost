@@ -79,6 +79,20 @@ Cross-platform considerations remain part of the public API design.
 - Window icon and title updates.
 - Offscreen/headless surfaces for render-to-texture or CI.
 - Multi-display policies and surface-to-display assignment.
+- Window geometry APIs (position/size/constraints).
+- Cursor shapes and custom cursor images.
+- Safe-area insets for mobile/notched displays.
+- HDR/EDR display capability reporting.
+- Power/thermal events for pacing decisions.
+- Pointer lock/capture controls.
+- Clipboard formats beyond text (images/paths).
+- App path discovery (data/cache/config directories).
+- Permissions API (camera/mic/location).
+- Idle sleep / screensaver inhibition.
+- Controller LEDs / lightbar controls.
+- Localization and IME language info.
+- Background task/keep-alive hooks (mobile).
+- System tray/menu-bar integration (desktop).
 
 ## Non-Responsibilities
 - UI layout, widget state, focus policy.
@@ -92,7 +106,9 @@ Cross-platform considerations remain part of the public API design.
 - `DeviceEvent`: connected/disconnected notifications for input devices.
 - Audio output APIs (see `docs/audio.md`).
 Additional utilities: capability queries, clipboard, cursor control, window state controls, timing utilities.
+Additional utilities: window geometry, cursor shapes, safe-area insets, HDR/EDR info, power/thermal events, pointer lock, clipboard formats, app paths.
 - `FrameTiming`: monotonic time + delta.
+- `FrameDiagnostics`: target vs actual intervals for detecting missed frame budgets.
 - `FramePolicy`: event-driven, continuous, or capped.
 - `FrameConfig`: pacing config per surface.
 - `FpsTracker` / `FpsStats`: utility for high-quality FPS and frame-time statistics.
