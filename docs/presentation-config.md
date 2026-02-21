@@ -48,6 +48,9 @@ These defaults guide the initial Apple Silicon implementation and are expected t
   - `Smooth` prefers 3 buffers when supported.
   - `Uncapped` prefers the maximum buffer count.
 
+## MaxFrameLatency
+- `maxFrameLatency` is clamped to `bufferCount` when both are set.
+
 ## Platform Recommendations
 | Platform | Backend | Swapchain/Layer | Buffer Count | Notes |
 | --- | --- | --- | --- | --- |
