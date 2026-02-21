@@ -54,6 +54,11 @@ struct AudioStreamConfig {
   std::chrono::nanoseconds targetLatency{0};
 };
 
+Defaults:
+- `bufferFrames = 0` uses 512 frames.
+- `periodFrames = 0` uses 256 frames (clamped to `bufferFrames`).
+- `periodFrames` is clamped to `bufferFrames` when larger.
+
 struct AudioDeviceInfo {
   AudioDeviceId id{};
   Utf8TextView name;
