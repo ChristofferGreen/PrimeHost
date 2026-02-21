@@ -126,6 +126,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - Focus/activation events per surface (draft).
 
 ## Host Interface
+- `createHost() -> HostResult<std::unique_ptr<Host>>`
 - `Host::hostCapabilities() -> HostResult<HostCapabilities>`
 - `Host::surfaceCapabilities(SurfaceId) -> HostResult<SurfaceCapabilities>`
 - `Host::deviceInfo(deviceId) -> HostResult<DeviceInfo>`

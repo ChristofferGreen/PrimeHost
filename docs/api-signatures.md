@@ -262,6 +262,8 @@ public:
   virtual HostStatus setCallbacks(Callbacks callbacks) = 0;
 };
 
+HostResult<std::unique_ptr<Host>> createHost();
+
 } // namespace PrimeHost
 ```
 

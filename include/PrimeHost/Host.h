@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -318,5 +319,7 @@ public:
 
   virtual HostStatus setCallbacks(Callbacks callbacks) = 0;
 };
+
+HostResult<std::unique_ptr<Host>> createHost();
 
 } // namespace PrimeHost

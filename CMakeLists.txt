@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(PrimeHost VERSION 0.1.0 LANGUAGES CXX)
+if(APPLE)
+  project(PrimeHost VERSION 0.1.0 LANGUAGES CXX OBJCXX)
+else()
+  project(PrimeHost VERSION 0.1.0 LANGUAGES CXX)
+endif()
 
 set(CMAKE_DEBUG_POSTFIX "-debug")
 set(CMAKE_RELEASE_POSTFIX "-release")
@@ -25,6 +29,10 @@ set(PRIMEHOST_SOURCES
   src/PrimeHost.cpp
 )
 
+if(APPLE)
+  list(APPEND PRIMEHOST_SOURCES src/platform/macos/HostMac.mm)
+endif()
+
 add_library(PrimeHost ${PRIMEHOST_SOURCES})
 
 target_include_directories(PrimeHost
@@ -34,6 +42,14 @@ target_include_directories(PrimeHost
 )
 
 ph_require_cxx23(PrimeHost)
+
+if(APPLE)
+  find_library(COCOA_LIBRARY Cocoa)
+  find_library(METAL_LIBRARY Metal)
+  find_library(QUARTZCORE_LIBRARY QuartzCore)
+  target_link_libraries(PrimeHost PRIVATE ${COCOA_LIBRARY} ${METAL_LIBRARY} ${QUARTZCORE_LIBRARY})
+  set_source_files_properties(src/platform/macos/HostMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+endif()
 
 option(PRIMEHOST_BUILD_TESTS "Build PrimeHost tests" ON)
 if(PRIMEHOST_BUILD_TESTS)

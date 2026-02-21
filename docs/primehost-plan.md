@@ -108,6 +108,7 @@ Cross-platform considerations remain part of the public API design.
 - Audio output APIs (see `docs/audio.md`).
 Additional utilities: capability queries, clipboard, cursor control, window state controls, timing utilities.
 Additional utilities: window geometry, cursor shapes, safe-area insets, HDR/EDR info, power/thermal events, pointer lock, clipboard formats, app paths.
+Factory: `createHost()` constructs the platform host implementation.
 - `FrameTiming`: monotonic time + delta.
 - `FrameDiagnostics`: target vs actual intervals for detecting missed frame budgets.
 - `FramePolicy`: event-driven, continuous, or capped.
