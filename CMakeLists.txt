@@ -56,9 +56,21 @@ ph_require_cxx23(PrimeHost)
 
 if(APPLE)
   find_library(COCOA_LIBRARY Cocoa)
+  find_library(GAMECONTROLLER_LIBRARY GameController)
   find_library(METAL_LIBRARY Metal)
+  find_library(AUDIOTOOLBOX_LIBRARY AudioToolbox)
+  find_library(AUDIOUNIT_LIBRARY AudioUnit)
+  find_library(COREAUDIO_LIBRARY CoreAudio)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
-  target_link_libraries(PrimeHost PRIVATE ${COCOA_LIBRARY} ${METAL_LIBRARY} ${QUARTZCORE_LIBRARY})
+  target_link_libraries(PrimeHost PRIVATE
+    ${COCOA_LIBRARY}
+    ${GAMECONTROLLER_LIBRARY}
+    ${METAL_LIBRARY}
+    ${AUDIOTOOLBOX_LIBRARY}
+    ${AUDIOUNIT_LIBRARY}
+    ${COREAUDIO_LIBRARY}
+    ${QUARTZCORE_LIBRARY}
+  )
   if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(src/platform/macos/HostMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     set_source_files_properties(src/platform/macos/AudioMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")

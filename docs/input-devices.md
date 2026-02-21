@@ -34,6 +34,18 @@ Fill these once we finalize the initial database and verify platform IDs.
 | Logitech | F310/F710 (XInput) | TBD | TBD | XInput | Requires XInput mode. |
 | 8BitDo | XInput Mode | TBD | TBD | XInput | Varies by model. |
 
+### macOS Matching (Current)
+On macOS, PrimeHost uses `GCController` and performs a case-insensitive name match to seed initial
+capabilities for common controllers. This avoids hardcoding VID/PID pairs until the HID layer is
+fully wired up. The current matching tokens are:
+- `xbox`
+- `dualshock`
+- `dualsense`
+- `switch pro`
+- `8bitdo`
+- `f310`
+- `f710`
+
 ### Required Fields
 - Vendor ID (VID)
 - Product ID (PID)

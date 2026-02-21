@@ -1,6 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
 #import <CoreVideo/CoreVideo.h>
+#import <GameController/GameController.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -12,6 +13,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -41,15 +43,20 @@ namespace {
 constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
 
-struct GamepadMapping {
-  uint16_t vendorId = 0u;
-  uint16_t productId = 0u;
-  const char* name = nullptr;
-  bool hasRumble = false;
+struct GamepadProfile {
+  std::string_view match;
   bool hasAnalogButtons = false;
 };
 
-[[maybe_unused]] constexpr std::array<GamepadMapping, 0> kGamepadMappings{};
+constexpr std::array<GamepadProfile, 7> kGamepadProfiles{{
+    {"xbox", true},
+    {"dualshock", true},
+    {"dualsense", true},
+    {"switch pro", false},
+    {"8bitdo", true},
+    {"f310", true},
+    {"f710", true},
+}};
 
 struct SurfaceState {
   SurfaceId surfaceId{};
@@ -66,6 +73,19 @@ struct SurfaceState {
   CADisplayLink* viewDisplayLink = nil;
 #endif
 };
+
+std::optional<GamepadProfile> match_gamepad_profile(NSString* name) {
+  if (!name) {
+    return std::nullopt;
+  }
+  std::string lower = [[name lowercaseString] UTF8String];
+  for (const auto& profile : kGamepadProfiles) {
+    if (lower.find(profile.match) != std::string::npos) {
+      return profile;
+    }
+  }
+  return std::nullopt;
+}
 
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {
   uint32_t result = 0u;
@@ -242,6 +262,8 @@ public:
   void handleWindowClosed(uint64_t surfaceId);
   void handleDisplayLinkTick();
   void handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link);
+  void handleGamepadConnected(GCController* controller);
+  void handleGamepadDisconnected(GCController* controller);
 
 private:
   struct QueuedEvent {
@@ -261,14 +283,20 @@ private:
   struct DeviceRecord {
     DeviceInfo info;
     DeviceCapabilities caps;
+    std::string nameStorage;
   };
   std::unordered_map<uint32_t, DeviceRecord> devices_;
   std::vector<uint32_t> deviceOrder_;
+  std::unordered_map<void*, uint32_t> gamepadIds_;
+  std::unordered_map<uint32_t, GCController*> gamepadControllers_;
+  id gamepadConnectObserver_ = nil;
+  id gamepadDisconnectObserver_ = nil;
   std::vector<QueuedEvent> eventQueue_;
   std::vector<Event> callbackEvents_;
   std::vector<char> callbackText_;
   Callbacks callbacks_{};
   uint64_t nextSurfaceId_ = 1u;
+  uint32_t nextDeviceId_ = 3u;
   CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
 };
@@ -530,17 +558,19 @@ HostMac::HostMac() {
   DeviceRecord mouse{};
   mouse.info.deviceId = kMouseDeviceId;
   mouse.info.type = DeviceType::Mouse;
-  mouse.info.name = "Mouse";
+  mouse.nameStorage = "Mouse";
   mouse.caps.type = DeviceType::Mouse;
   devices_.emplace(kMouseDeviceId, mouse);
+  devices_[kMouseDeviceId].info.name = devices_[kMouseDeviceId].nameStorage;
   deviceOrder_.push_back(kMouseDeviceId);
 
   DeviceRecord keyboard{};
   keyboard.info.deviceId = kKeyboardDeviceId;
   keyboard.info.type = DeviceType::Keyboard;
-  keyboard.info.name = "Keyboard";
+  keyboard.nameStorage = "Keyboard";
   keyboard.caps.type = DeviceType::Keyboard;
   devices_.emplace(kKeyboardDeviceId, keyboard);
+  devices_[kKeyboardDeviceId].info.name = devices_[kKeyboardDeviceId].nameStorage;
   deviceOrder_.push_back(kKeyboardDeviceId);
 
   auto now = std::chrono::steady_clock::now();
@@ -552,6 +582,33 @@ HostMac::HostMac() {
       event.time = now;
       event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = it->second.info.type, .connected = true};
       enqueueEvent(std::move(event));
+    }
+  }
+
+  if (@available(macOS 10.15, *)) {
+    auto* center = [NSNotificationCenter defaultCenter];
+    HostMac* host = this;
+    gamepadConnectObserver_ =
+        [center addObserverForName:GCControllerDidConnectNotification
+                            object:nil
+                             queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(NSNotification* note) {
+                          if (auto* controller = (GCController*)note.object) {
+                            host->handleGamepadConnected(controller);
+                          }
+                        }];
+    gamepadDisconnectObserver_ =
+        [center addObserverForName:GCControllerDidDisconnectNotification
+                            object:nil
+                             queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(NSNotification* note) {
+                          if (auto* controller = (GCController*)note.object) {
+                            host->handleGamepadDisconnected(controller);
+                          }
+                        }];
+
+    for (GCController* controller in [GCController controllers]) {
+      handleGamepadConnected(controller);
     }
   }
 
@@ -571,6 +628,14 @@ HostMac::HostMac() {
 }
 
 HostMac::~HostMac() {
+  if (gamepadConnectObserver_) {
+    [[NSNotificationCenter defaultCenter] removeObserver:gamepadConnectObserver_];
+    gamepadConnectObserver_ = nil;
+  }
+  if (gamepadDisconnectObserver_) {
+    [[NSNotificationCenter defaultCenter] removeObserver:gamepadDisconnectObserver_];
+    gamepadDisconnectObserver_ = nil;
+  }
   if (cvDisplayLink_) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -816,7 +881,9 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
 }
 
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
-  (void)rumble;
+  if (gamepadControllers_.find(rumble.deviceId) == gamepadControllers_.end()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidDevice});
+  }
   return std::unexpected(HostError{HostErrorCode::Unsupported});
 }
 
@@ -996,6 +1063,74 @@ void HostMac::handleText(uint64_t surfaceId, NSString* text) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = textEvent;
   enqueueEvent(std::move(evt), std::move(utf8));
+}
+
+void HostMac::handleGamepadConnected(GCController* controller) {
+  if (!controller) {
+    return;
+  }
+  void* key = (__bridge void*)controller;
+  if (gamepadIds_.find(key) != gamepadIds_.end()) {
+    return;
+  }
+
+  uint32_t deviceId = nextDeviceId_++;
+  gamepadIds_[key] = deviceId;
+  gamepadControllers_[deviceId] = controller;
+
+  DeviceRecord record{};
+  record.info.deviceId = deviceId;
+  record.info.type = DeviceType::Gamepad;
+
+  NSString* name = controller.vendorName;
+  if (!name || name.length == 0) {
+    name = controller.productCategory;
+  }
+  if (name && name.length > 0) {
+    record.nameStorage = [name UTF8String];
+  } else {
+    record.nameStorage = "Gamepad";
+  }
+
+  record.caps.type = DeviceType::Gamepad;
+  if (controller.extendedGamepad) {
+    record.caps.hasAnalogButtons = true;
+  }
+  if (auto profile = match_gamepad_profile(name)) {
+    record.caps.hasAnalogButtons = record.caps.hasAnalogButtons || profile->hasAnalogButtons;
+  }
+
+  devices_.emplace(deviceId, std::move(record));
+  devices_[deviceId].info.name = devices_[deviceId].nameStorage;
+  deviceOrder_.push_back(deviceId);
+
+  Event event{};
+  event.scope = Event::Scope::Global;
+  event.time = std::chrono::steady_clock::now();
+  event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = DeviceType::Gamepad, .connected = true};
+  enqueueEvent(std::move(event));
+}
+
+void HostMac::handleGamepadDisconnected(GCController* controller) {
+  if (!controller) {
+    return;
+  }
+  void* key = (__bridge void*)controller;
+  auto it = gamepadIds_.find(key);
+  if (it == gamepadIds_.end()) {
+    return;
+  }
+  uint32_t deviceId = it->second;
+  gamepadIds_.erase(it);
+  gamepadControllers_.erase(deviceId);
+  devices_.erase(deviceId);
+  deviceOrder_.erase(std::remove(deviceOrder_.begin(), deviceOrder_.end(), deviceId), deviceOrder_.end());
+
+  Event event{};
+  event.scope = Event::Scope::Global;
+  event.time = std::chrono::steady_clock::now();
+  event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = DeviceType::Gamepad, .connected = false};
+  enqueueEvent(std::move(event));
 }
 
 void HostMac::handleWindowClosed(uint64_t surfaceId) {
