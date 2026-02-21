@@ -3,6 +3,7 @@
 #import <dispatch/dispatch.h>
 
 #include "PrimeHost/Audio.h"
+#include "AudioConfigDefaults.h"
 
 #include <algorithm>
 #include <cmath>
@@ -78,7 +79,11 @@ public:
     if (!callback) {
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
     }
-    if (config.format.channels == 0u) {
+    AudioStreamConfig resolved = resolveAudioStreamConfig(config);
+    if (resolved.format.channels == 0u) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    if (resolved.format.sampleRate == 0u) {
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
     }
     if (config.format.format != SampleFormat::Float32 && config.format.format != SampleFormat::Int16) {
@@ -131,7 +136,7 @@ public:
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
 
-    UInt32 maxFrames = std::max(config.bufferFrames, config.periodFrames);
+    UInt32 maxFrames = std::max(resolved.bufferFrames, resolved.periodFrames);
     if (maxFrames == 0u) {
       maxFrames = 512u;
     }
@@ -142,14 +147,14 @@ public:
                          &maxFrames,
                          sizeof(maxFrames));
 
-    const bool interleaved = config.format.interleaved;
-    const bool isFloat = config.format.format == SampleFormat::Float32;
+    const bool interleaved = resolved.format.interleaved;
+    const bool isFloat = resolved.format.format == SampleFormat::Float32;
     const uint32_t bitsPerChannel = isFloat ? 32u : 16u;
     const uint32_t bytesPerSample = bitsPerChannel / 8u;
-    const uint32_t bytesPerFrame = interleaved ? bytesPerSample * config.format.channels : bytesPerSample;
+    const uint32_t bytesPerFrame = interleaved ? bytesPerSample * resolved.format.channels : bytesPerSample;
 
     AudioStreamBasicDescription format{};
-    format.mSampleRate = static_cast<Float64>(config.format.sampleRate);
+    format.mSampleRate = static_cast<Float64>(resolved.format.sampleRate);
     format.mFormatID = kAudioFormatLinearPCM;
     format.mFormatFlags = static_cast<AudioFormatFlags>(kAudioFormatFlagsNativeEndian);
     format.mFormatFlags |= static_cast<AudioFormatFlags>(kAudioFormatFlagIsPacked);
@@ -162,7 +167,7 @@ public:
       format.mFormatFlags |= static_cast<AudioFormatFlags>(kAudioFormatFlagIsNonInterleaved);
     }
     format.mFramesPerPacket = 1;
-    format.mChannelsPerFrame = config.format.channels;
+    format.mChannelsPerFrame = resolved.format.channels;
     format.mBitsPerChannel = bitsPerChannel;
     format.mBytesPerFrame = bytesPerFrame;
     format.mBytesPerPacket = format.mBytesPerFrame * format.mFramesPerPacket;
@@ -198,7 +203,7 @@ public:
     unit_ = unit;
     callback_ = callback;
     userData_ = userData;
-    activeConfig_ = config;
+    activeConfig_ = resolved;
     activeDevice_ = deviceId;
     activeChannels_ = config.format.channels;
     frameIndex_ = 0u;
