@@ -70,9 +70,7 @@ struct SurfaceState {
 };
 
 std::optional<GamepadProfile> match_gamepad_profile(uint16_t vendorId, uint16_t productId, std::string_view name) {
-  (void)vendorId;
-  (void)productId;
-  return findGamepadProfile(name);
+  return findGamepadProfile(vendorId, productId, name);
 }
 
 uint16_t hid_uint16_property(IOHIDDeviceRef device, CFStringRef key) {
