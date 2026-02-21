@@ -31,6 +31,7 @@ endfunction()
 
 set(PRIMEHOST_SOURCES
   src/PrimeHost.cpp
+  src/TextBuffer.h
 )
 
 if(APPLE)
@@ -43,6 +44,8 @@ target_include_directories(PrimeHost
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 ph_require_cxx23(PrimeHost)
@@ -64,6 +67,7 @@ if(PRIMEHOST_BUILD_TESTS)
   add_executable(PrimeHost_tests
     tests/unit/test_main.cpp
     tests/unit/test_smoke.cpp
+    tests/unit/test_text_buffer.cpp
   )
   target_link_libraries(PrimeHost_tests PRIVATE PrimeHost)
   target_include_directories(PrimeHost_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

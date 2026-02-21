@@ -1,9 +1,12 @@
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
+#import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <dispatch/dispatch.h>
 
 #include "PrimeHost/Host.h"
+#include "TextBuffer.h"
 
 #include <array>
 #include <algorithm>
@@ -24,8 +27,10 @@ class HostMac;
 @end
 
 @interface PHHostView : NSView
+<NSTextInputClient>
 @property(nonatomic, assign) PrimeHost::HostMac* host;
 @property(nonatomic, assign) uint64_t surfaceId;
+- (void)setImeRect:(NSRect)rect;
 @end
 
 namespace PrimeHost {
@@ -35,11 +40,12 @@ constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
 
 struct SurfaceState {
-  SurfaceId id{};
+  SurfaceId surfaceId{};
   NSWindow* window = nullptr;
   NSView* view = nullptr;
   CAMetalLayer* layer = nullptr;
   PHWindowDelegate* delegate = nullptr;
+  id commandQueue = nil;
   FrameConfig frameConfig{};
   uint64_t frameIndex = 0u;
   std::chrono::steady_clock::time_point lastFrameTime{};
@@ -185,6 +191,7 @@ uint32_t map_mouse_buttons(NSUInteger pressedMask) {
 class HostMac : public Host {
 public:
   HostMac();
+  ~HostMac() override;
 
   HostResult<HostCapabilities> hostCapabilities() const override;
   HostResult<SurfaceCapabilities> surfaceCapabilities(SurfaceId surfaceId) const override;
@@ -202,6 +209,11 @@ public:
   HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
+  HostStatus setImeCompositionRect(SurfaceId surfaceId,
+                                   int32_t x,
+                                   int32_t y,
+                                   int32_t width,
+                                   int32_t height) override;
 
   HostStatus setCallbacks(Callbacks callbacks) override;
 
@@ -210,21 +222,56 @@ public:
   void handleScroll(uint64_t surfaceId, NSEvent* event);
   void handleKey(NSEvent* event, bool pressed, bool repeat);
   void handleModifiers(NSEvent* event);
+  void handleText(uint64_t surfaceId, NSString* text);
   void handleWindowClosed(uint64_t surfaceId);
+  void handleDisplayLinkTick();
 
 private:
-  void enqueueEvent(Event event);
+  struct QueuedEvent {
+    Event event;
+    std::string text;
+  };
+
+  HostStatus presentEmptyFrame(SurfaceState& surface);
+  HostResult<EventBatch> buildBatch(std::span<const QueuedEvent> events, const EventBuffer& buffer);
+  void enqueueEvent(Event event, std::string text = {});
   void pumpEvents(bool wait);
   SurfaceState* findSurface(uint64_t surfaceId);
+  void updateDisplayLinkState();
 
   NSApplication* app_ = nullptr;
-  std::unordered_map<uint64_t, SurfaceState> surfaces_;
-  std::vector<Event> eventQueue_;
+  std::unordered_map<uint64_t, std::unique_ptr<SurfaceState>> surfaces_;
+  std::vector<QueuedEvent> eventQueue_;
+  std::vector<Event> callbackEvents_;
+  std::vector<char> callbackText_;
   Callbacks callbacks_{};
   uint64_t nextSurfaceId_ = 1u;
+  CVDisplayLinkRef displayLink_ = nullptr;
+  std::optional<std::chrono::nanoseconds> displayInterval_{};
 };
 
 } // namespace PrimeHost
+
+static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
+                                      const CVTimeStamp* now,
+                                      const CVTimeStamp* outputTime,
+                                      CVOptionFlags flagsIn,
+                                      CVOptionFlags* flagsOut,
+                                      void* context) {
+  (void)displayLink;
+  (void)now;
+  (void)outputTime;
+  (void)flagsIn;
+  (void)flagsOut;
+  auto* host = static_cast<PrimeHost::HostMac*>(context);
+  if (!host) {
+    return kCVReturnSuccess;
+  }
+  dispatch_async(dispatch_get_main_queue(), ^{
+    host->handleDisplayLinkTick();
+  });
+  return kCVReturnSuccess;
+}
 
 @implementation PHWindowDelegate
 - (void)windowDidResize:(NSNotification*)notification {
@@ -242,6 +289,20 @@ private:
 
 @implementation PHHostView {
   NSTrackingArea* trackingArea_;
+  NSMutableAttributedString* markedText_;
+  NSRange markedRange_;
+  NSRange selectedRange_;
+  NSRect imeRect_;
+}
+
+- (instancetype)initWithFrame:(NSRect)frameRect {
+  self = [super initWithFrame:frameRect];
+  if (self) {
+    markedRange_ = NSMakeRange(NSNotFound, 0);
+    selectedRange_ = NSMakeRange(0, 0);
+    imeRect_ = NSMakeRect(0, 0, 0, 0);
+  }
+  return self;
 }
 
 - (BOOL)isFlipped {
@@ -332,6 +393,7 @@ private:
   if (self.host) {
     self.host->handleKey(event, true, event.isARepeat);
   }
+  [self interpretKeyEvents:@[event]];
 }
 
 - (void)keyUp:(NSEvent*)event {
@@ -345,6 +407,88 @@ private:
     self.host->handleModifiers(event);
   }
 }
+
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+  if (self.host) {
+    NSString* text = nil;
+    if ([string isKindOfClass:[NSAttributedString class]]) {
+      text = [(NSAttributedString*)string string];
+    } else if ([string isKindOfClass:[NSString class]]) {
+      text = (NSString*)string;
+    }
+    if (text) {
+      self.host->handleText(self.surfaceId, text);
+    }
+  }
+  [self unmarkText];
+}
+
+- (void)setMarkedText:(id)string
+        selectedRange:(NSRange)selectedRange
+     replacementRange:(NSRange)replacementRange {
+  if ([string isKindOfClass:[NSAttributedString class]]) {
+    markedText_ = [[NSMutableAttributedString alloc] initWithAttributedString:string];
+  } else if ([string isKindOfClass:[NSString class]]) {
+    markedText_ = [[NSMutableAttributedString alloc] initWithString:string];
+  } else {
+    markedText_ = nil;
+  }
+  if (markedText_) {
+    markedRange_ = NSMakeRange(0, markedText_.length);
+    selectedRange_ = selectedRange;
+  } else {
+    markedRange_ = NSMakeRange(NSNotFound, 0);
+    selectedRange_ = NSMakeRange(0, 0);
+  }
+}
+
+- (void)unmarkText {
+  markedText_ = nil;
+  markedRange_ = NSMakeRange(NSNotFound, 0);
+}
+
+- (BOOL)hasMarkedText {
+  return markedRange_.location != NSNotFound && markedRange_.length > 0;
+}
+
+- (NSRange)markedRange {
+  return markedRange_;
+}
+
+- (NSRange)selectedRange {
+  return selectedRange_;
+}
+
+- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText {
+  return @[];
+}
+
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range
+                                               actualRange:(NSRangePointer)actualRange {
+  if (actualRange) {
+    *actualRange = NSMakeRange(NSNotFound, 0);
+  }
+  return nil;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point {
+  return 0;
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+  if (actualRange) {
+    *actualRange = NSMakeRange(0, 0);
+  }
+  return imeRect_;
+}
+
+- (void)doCommandBySelector:(SEL)selector {
+  (void)selector;
+}
+
+- (void)setImeRect:(NSRect)rect {
+  imeRect_ = rect;
+}
 @end
 
 namespace PrimeHost {
@@ -353,6 +497,25 @@ HostMac::HostMac() {
   app_ = [NSApplication sharedApplication];
   [app_ setActivationPolicy:NSApplicationActivationPolicyRegular];
   [app_ finishLaunching];
+
+  CVDisplayLinkCreateWithActiveCGDisplays(&displayLink_);
+  if (displayLink_) {
+    CVDisplayLinkSetOutputCallback(displayLink_, &display_link_callback, this);
+    CVTime refresh = CVDisplayLinkGetNominalOutputVideoRefreshPeriod(displayLink_);
+    if (refresh.timeValue > 0 && refresh.timeScale > 0) {
+      double seconds = static_cast<double>(refresh.timeValue) / static_cast<double>(refresh.timeScale);
+      displayInterval_ = std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::duration<double>(seconds));
+    }
+  }
+}
+
+HostMac::~HostMac() {
+  if (displayLink_) {
+    CVDisplayLinkStop(displayLink_);
+    CVDisplayLinkRelease(displayLink_);
+    displayLink_ = nullptr;
+  }
 }
 
 HostResult<HostCapabilities> HostMac::hostCapabilities() const {
@@ -424,7 +587,7 @@ HostResult<size_t> HostMac::devices(std::span<DeviceInfo> outDevices) const {
 }
 
 HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
-  SurfaceId id{nextSurfaceId_++};
+  SurfaceId surfaceId{nextSurfaceId_++};
 
   NSUInteger styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
   if (config.resizable) {
@@ -446,13 +609,14 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
 
   PHHostView* view = [[PHHostView alloc] initWithFrame:rect];
   view.host = this;
-  view.surfaceId = id.value;
+  view.surfaceId = surfaceId.value;
   view.wantsLayer = YES;
   view.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
   CAMetalLayer* layer = [CAMetalLayer layer];
-  layer.device = MTLCreateSystemDefaultDevice();
+  id device = MTLCreateSystemDefaultDevice();
+  layer.device = device;
   layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   layer.framebufferOnly = YES;
   layer.contentsScale = window.backingScaleFactor;
@@ -465,31 +629,33 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
 
   PHWindowDelegate* delegate = [[PHWindowDelegate alloc] init];
   delegate.host = this;
-  delegate.surfaceId = id.value;
+  delegate.surfaceId = surfaceId.value;
   window.delegate = delegate;
 
   [window makeKeyAndOrderFront:nil];
   [app_ activateIgnoringOtherApps:YES];
 
-  SurfaceState state{};
-  state.id = id;
-  state.window = window;
-  state.view = view;
-  state.layer = layer;
-  state.delegate = delegate;
-  state.lastFrameTime = std::chrono::steady_clock::now();
-  surfaces_.emplace(id.value, state);
+  auto state = std::make_unique<SurfaceState>();
+  state->surfaceId = surfaceId;
+  state->window = window;
+  state->view = view;
+  state->layer = layer;
+  state->commandQueue = [device newCommandQueue];
+  state->delegate = delegate;
+  state->lastFrameTime = std::chrono::steady_clock::now();
+  surfaces_.emplace(surfaceId.value, std::move(state));
 
   [window makeFirstResponder:view];
 
   Event created{};
   created.scope = Event::Scope::Surface;
-  created.surfaceId = id;
+  created.surfaceId = surfaceId;
   created.time = std::chrono::steady_clock::now();
   created.payload = LifecycleEvent{LifecyclePhase::Created};
   enqueueEvent(std::move(created));
 
-  return id;
+  updateDisplayLinkState();
+  return surfaceId;
 }
 
 HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
@@ -497,8 +663,16 @@ HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
   if (it == surfaces_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
-  [it->second.window close];
+  NSWindow* window = it->second->window;
+  it->second->window = nil;
+  it->second->view = nil;
+  it->second->layer = nil;
+  it->second->commandQueue = nil;
   surfaces_.erase(it);
+  if (window) {
+    [window close];
+  }
+  updateDisplayLinkState();
   return {};
 }
 
@@ -508,16 +682,13 @@ HostResult<EventBatch> HostMac::pollEvents(const EventBuffer& buffer) {
   }
   pumpEvents(false);
 
-  size_t count = std::min(buffer.events.size(), eventQueue_.size());
-  for (size_t i = 0; i < count; ++i) {
-    buffer.events[i] = eventQueue_[i];
+  auto batch = buildBatch(std::span<const QueuedEvent>(eventQueue_.data(), eventQueue_.size()), buffer);
+  if (!batch) {
+    return std::unexpected(batch.error());
   }
-  eventQueue_.erase(eventQueue_.begin(), eventQueue_.begin() + static_cast<long>(count));
 
-  EventBatch batch{
-      std::span<const Event>(buffer.events.data(), count),
-      std::span<const char>(buffer.textBytes.data(), 0),
-  };
+  size_t consumed = batch->events.size();
+  eventQueue_.erase(eventQueue_.begin(), eventQueue_.begin() + static_cast<long>(consumed));
   return batch;
 }
 
@@ -533,7 +704,7 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (!callbacks_.onFrame) {
-    return {};
+    return presentEmptyFrame(*surface);
   }
 
   auto now = std::chrono::steady_clock::now();
@@ -546,11 +717,16 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
   timing.frameIndex = surface->frameIndex++;
 
   FrameDiagnostics diag{};
-  if (surface->frameConfig.frameInterval) {
-    diag.targetInterval = *surface->frameConfig.frameInterval;
+  std::optional<std::chrono::nanoseconds> target = surface->frameConfig.frameInterval;
+  if (!target && displayInterval_) {
+    target = displayInterval_;
+  }
+  if (target) {
+    diag.targetInterval = *target;
     diag.actualInterval = timing.delta;
     diag.missedDeadline = timing.delta > diag.targetInterval;
   }
+  diag.wasThrottled = surface->frameConfig.framePolicy == FramePolicy::Capped;
 
   callbacks_.onFrame(surfaceId, timing, diag);
   return {};
@@ -562,6 +738,7 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   surface->frameConfig = config;
+  updateDisplayLinkState();
   return {};
 }
 
@@ -570,8 +747,29 @@ HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
   return std::unexpected(HostError{HostErrorCode::Unsupported});
 }
 
+HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
+                                          int32_t x,
+                                          int32_t y,
+                                          int32_t width,
+                                          int32_t height) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->view) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  NSRect rect = NSMakeRect(static_cast<CGFloat>(x),
+                           static_cast<CGFloat>(y),
+                           static_cast<CGFloat>(width),
+                           static_cast<CGFloat>(height));
+  if ([surface->view isKindOfClass:[PHHostView class]]) {
+    [(PHHostView*)surface->view setImeRect:rect];
+    [[surface->view inputContext] invalidateCharacterCoordinates];
+  }
+  return {};
+}
+
 HostStatus HostMac::setCallbacks(Callbacks callbacks) {
   callbacks_ = std::move(callbacks);
+  updateDisplayLinkState();
   return {};
 }
 
@@ -706,6 +904,27 @@ void HostMac::handleModifiers(NSEvent* event) {
   enqueueEvent(std::move(evt));
 }
 
+void HostMac::handleText(uint64_t surfaceId, NSString* text) {
+  if (!text) {
+    return;
+  }
+  NSData* data = [text dataUsingEncoding:NSUTF8StringEncoding];
+  if (!data || data.length == 0) {
+    return;
+  }
+  std::string utf8(static_cast<const char*>(data.bytes), data.length);
+
+  TextEvent textEvent{};
+  textEvent.deviceId = kKeyboardDeviceId;
+
+  Event evt{};
+  evt.scope = Event::Scope::Surface;
+  evt.surfaceId = SurfaceId{surfaceId};
+  evt.time = std::chrono::steady_clock::now();
+  evt.payload = textEvent;
+  enqueueEvent(std::move(evt), std::move(utf8));
+}
+
 void HostMac::handleWindowClosed(uint64_t surfaceId) {
   Event evt{};
   evt.scope = Event::Scope::Surface;
@@ -718,20 +937,70 @@ void HostMac::handleWindowClosed(uint64_t surfaceId) {
   if (it != surfaces_.end()) {
     surfaces_.erase(it);
   }
+  updateDisplayLinkState();
 }
 
-void HostMac::enqueueEvent(Event event) {
+HostStatus HostMac::presentEmptyFrame(SurfaceState& surface) {
+  if (!surface.layer || !surface.commandQueue) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  @autoreleasepool {
+    id<CAMetalDrawable> drawable = [surface.layer nextDrawable];
+    if (!drawable) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    id<MTLCommandBuffer> commandBuffer = [surface.commandQueue commandBuffer];
+    [commandBuffer presentDrawable:drawable];
+    [commandBuffer commit];
+  }
+  return {};
+}
+
+HostResult<EventBatch> HostMac::buildBatch(std::span<const QueuedEvent> events, const EventBuffer& buffer) {
+  size_t count = std::min(buffer.events.size(), events.size());
+  TextBufferWriter writer{buffer.textBytes, 0u};
+  for (size_t i = 0; i < count; ++i) {
+    Event out = events[i].event;
+    if (auto* input = std::get_if<InputEvent>(&out.payload)) {
+      if (auto* text = std::get_if<TextEvent>(input)) {
+        auto span = writer.append(events[i].text);
+        if (!span) {
+          return std::unexpected(span.error());
+        }
+        text->text = span.value();
+      }
+    }
+    buffer.events[i] = out;
+  }
+
+  EventBatch batch{
+      std::span<const Event>(buffer.events.data(), count),
+      std::span<const char>(buffer.textBytes.data(), writer.offset),
+  };
+  return batch;
+}
+
+void HostMac::enqueueEvent(Event event, std::string text) {
+  QueuedEvent queued{std::move(event), std::move(text)};
   if (callbacks_.onEvents) {
-    Event local = event;
-    std::array<Event, 1> events{local};
-    EventBatch batch{
-        std::span<const Event>(events.data(), events.size()),
-        std::span<const char>(),
+    callbackEvents_.clear();
+    callbackText_.clear();
+    callbackEvents_.resize(1);
+    EventBuffer buffer{
+        std::span<Event>(callbackEvents_.data(), callbackEvents_.size()),
+        std::span<char>(),
     };
-    callbacks_.onEvents(batch);
+    if (!queued.text.empty()) {
+      callbackText_.resize(queued.text.size());
+      buffer.textBytes = std::span<char>(callbackText_.data(), callbackText_.size());
+    }
+    auto batch = buildBatch(std::span<const QueuedEvent>(&queued, 1), buffer);
+    if (batch) {
+      callbacks_.onEvents(*batch);
+    }
     return;
   }
-  eventQueue_.push_back(std::move(event));
+  eventQueue_.push_back(std::move(queued));
 }
 
 void HostMac::pumpEvents(bool wait) {
@@ -759,7 +1028,33 @@ SurfaceState* HostMac::findSurface(uint64_t surfaceId) {
   if (it == surfaces_.end()) {
     return nullptr;
   }
-  return &it->second;
+  return it->second.get();
+}
+
+void HostMac::updateDisplayLinkState() {
+  if (!displayLink_) {
+    return;
+  }
+  bool shouldRun = false;
+  for (const auto& entry : surfaces_) {
+    if (entry.second && entry.second->frameConfig.framePolicy == FramePolicy::Continuous) {
+      shouldRun = true;
+      break;
+    }
+  }
+  if (shouldRun && !CVDisplayLinkIsRunning(displayLink_)) {
+    CVDisplayLinkStart(displayLink_);
+  } else if (!shouldRun && CVDisplayLinkIsRunning(displayLink_)) {
+    CVDisplayLinkStop(displayLink_);
+  }
+}
+
+void HostMac::handleDisplayLinkTick() {
+  for (auto& entry : surfaces_) {
+    if (entry.second && entry.second->frameConfig.framePolicy == FramePolicy::Continuous) {
+      requestFrame(entry.second->surfaceId, false);
+    }
+  }
 }
 
 HostResult<std::unique_ptr<Host>> createHostMac() {
