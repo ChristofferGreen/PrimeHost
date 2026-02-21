@@ -35,6 +35,11 @@ inline HostStatus validateFrameConfig(const FrameConfig& config, const SurfaceCa
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
     }
   }
+  if (config.bufferCount != 0u && config.maxFrameLatency != 0u) {
+    if (config.maxFrameLatency > config.bufferCount) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+  }
   return {};
 }
 

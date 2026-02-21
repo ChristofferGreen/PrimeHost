@@ -21,6 +21,7 @@ PH_TEST("primehost.frameconfig", "validation rejects invalid settings") {
   config.bufferCount = 2u;
   config.vsync = true;
   config.allowTearing = false;
+  config.maxFrameLatency = 1u;
 
   auto ok = validateFrameConfig(config, caps);
   PH_CHECK(ok.has_value());
@@ -45,6 +46,17 @@ PH_TEST("primehost.frameconfig", "validation rejects invalid settings") {
   badCapped.frameInterval.reset();
   auto badCappedStatus = validateFrameConfig(badCapped, caps);
   PH_CHECK(!badCappedStatus.has_value());
+
+  FrameConfig badLatency = config;
+  badLatency.maxFrameLatency = 4u;
+  auto badLatencyStatus = validateFrameConfig(badLatency, caps);
+  PH_CHECK(!badLatencyStatus.has_value());
+
+  FrameConfig allowZeroBuffer = config;
+  allowZeroBuffer.bufferCount = 0u;
+  allowZeroBuffer.maxFrameLatency = 0u;
+  auto allowZeroStatus = validateFrameConfig(allowZeroBuffer, caps);
+  PH_CHECK(allowZeroStatus.has_value());
 }
 
 PH_TEST("primehost.frameconfig", "allows tearing when supported") {
