@@ -19,6 +19,7 @@
 #include "DeviceNameMatch.h"
 #include "FrameConfigValidation.h"
 #include "FrameConfigUtil.h"
+#include "FrameConfigDefaults.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
@@ -1088,11 +1089,12 @@ HostStatus HostMac::setFrameConfig(SurfaceId surfaceId, const FrameConfig& confi
   if (!caps) {
     return std::unexpected(caps.error());
   }
-  auto status = validateFrameConfig(config, caps.value());
+  FrameConfig resolved = resolveFrameConfig(config, caps.value());
+  auto status = validateFrameConfig(resolved, caps.value());
   if (!status) {
     return status;
   }
-  surface->frameConfig = config;
+  surface->frameConfig = resolved;
   apply_layer_config(*surface, caps.value());
   updateDisplayLinkState();
   return {};
