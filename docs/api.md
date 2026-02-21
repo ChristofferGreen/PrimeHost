@@ -142,6 +142,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 
 ## Validation Helpers
 - `validateFrameConfig(const FrameConfig&, const SurfaceCapabilities&)` (see `PrimeHost/FrameConfigValidation.h`).
+- `validateAudioStreamConfig(const AudioStreamConfig&)` (see `PrimeHost/AudioConfigValidation.h`).
 
 ### Error Handling (Example)
 ```cpp

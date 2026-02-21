@@ -4,7 +4,7 @@
 
 #include "PrimeHost/Audio.h"
 #include "AudioConfigDefaults.h"
-#include "AudioConfigValidation.h"
+#include "PrimeHost/AudioConfigValidation.h"
 
 #include <algorithm>
 #include <cmath>

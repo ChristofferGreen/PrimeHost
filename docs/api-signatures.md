@@ -302,6 +302,8 @@ HostResult<std::unique_ptr<Host>> createHost();
 
 HostStatus validateFrameConfig(const FrameConfig& config, const SurfaceCapabilities& caps);
 
+HostStatus validateAudioStreamConfig(const AudioStreamConfig& config);
+
 } // namespace PrimeHost
 ```
 
