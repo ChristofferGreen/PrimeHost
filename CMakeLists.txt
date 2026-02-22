@@ -32,6 +32,7 @@ endfunction()
 set(PRIMEHOST_SOURCES
   src/PrimeHost.cpp
   src/PrimeHostAudio.cpp
+  src/PrimeHostFps.cpp
   src/GamepadProfiles.cpp
   src/TextBuffer.h
 )
@@ -123,6 +124,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_displays.cpp
     tests/unit/test_surface_display.cpp
     tests/unit/test_host_extensions.cpp
+    tests/unit/test_fps.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp

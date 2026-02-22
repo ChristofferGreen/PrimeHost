@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <span>
+#include <vector>
 
 namespace PrimeHost {
 
@@ -39,6 +40,12 @@ private:
   size_t sampleCapacity_ = 0u;
   size_t sampleCount_ = 0u;
   std::chrono::nanoseconds reportInterval_{0};
+  std::vector<std::chrono::nanoseconds> samples_;
+  size_t sampleIndex_ = 0u;
+  bool hasLastFrameTime_ = false;
+  bool hasLastReportTime_ = false;
+  std::chrono::steady_clock::time_point lastFrameTime_{};
+  std::chrono::steady_clock::time_point lastReportTime_{};
 };
 
 FpsStats computeFpsStats(std::span<const std::chrono::nanoseconds> frameTimes);
