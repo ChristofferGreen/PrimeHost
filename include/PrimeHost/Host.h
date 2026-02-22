@@ -367,6 +367,8 @@ public:
   virtual HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const = 0;
   virtual HostStatus setClipboardText(Utf8TextView text) = 0;
   virtual HostResult<float> surfaceScale(SurfaceId surfaceId) const = 0;
+  virtual HostStatus setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
+  virtual HostStatus setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
 

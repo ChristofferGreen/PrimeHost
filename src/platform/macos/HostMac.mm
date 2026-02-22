@@ -348,6 +348,8 @@ public:
   HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
   HostStatus setClipboardText(Utf8TextView text) override;
   HostResult<float> surfaceScale(SurfaceId surfaceId) const override;
+  HostStatus setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
+  HostStatus setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1306,6 +1308,34 @@ HostResult<float> HostMac::surfaceScale(SurfaceId surfaceId) const {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   return static_cast<float>(surface->window.backingScaleFactor);
+}
+
+HostStatus HostMac::setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint32_t height) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (width == 0u || height == 0u) {
+    surface->window.contentMinSize = NSMakeSize(0.0, 0.0);
+    return {};
+  }
+  surface->window.contentMinSize = NSMakeSize(static_cast<CGFloat>(width),
+                                              static_cast<CGFloat>(height));
+  return {};
+}
+
+HostStatus HostMac::setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (width == 0u || height == 0u) {
+    surface->window.contentMaxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
+    return {};
+  }
+  surface->window.contentMaxSize = NSMakeSize(static_cast<CGFloat>(width),
+                                              static_cast<CGFloat>(height));
+  return {};
 }
 
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {

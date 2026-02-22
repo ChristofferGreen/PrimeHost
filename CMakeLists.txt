@@ -104,6 +104,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_clipboard.cpp
     tests/unit/test_clipboard_size.cpp
     tests/unit/test_surface_scale.cpp
+    tests/unit/test_surface_constraints.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp
