@@ -215,16 +215,19 @@ if (result && result->accepted) {
 - Implemented: `appPathSize`, `appPath` (macOS).
 
 ## Events
-- `Event`: tagged union of input, resize, power/thermal, and lifecycle events.
+- `Event`: tagged union of input, resize, drop, power/thermal, and lifecycle events.
 - `DeviceEvent`: connect/disconnect notification for input devices.
 - Input events: `PointerEvent`, `KeyEvent`, `TextEvent`, `ScrollEvent`, `GamepadButtonEvent`, `GamepadAxisEvent`.
 - Power events: `PowerEvent` (low power mode), `ThermalEvent` (thermal state changes).
+- Drop events: `DropEvent` with NUL-separated UTF-8 paths and a count.
 - All input events carry `deviceId`.
 - Pointer events unify mouse/touch/pen; optional fields include delta, pressure, tilt, twist, and distance.
 - Gamepad buttons may include an optional analog value; axes always include a float value.
 - Text input is UTF-8; `TextEvent` carries a `TextSpan` pointing into the `EventBatch` text buffer.
 - Text spans are valid for the duration of the callback or until the next `pollEvents()` call.
 - IME composition events (draft).
+Drop paths are concatenated with `\0` separators in the `EventBatch` text buffer; use `DropEvent::count`
+to split the buffer into individual UTF-8 paths.
 Input ranges and coordinate conventions are defined in `docs/input-semantics.md`.
 
 Event scoping:
@@ -253,7 +256,7 @@ for (const PrimeHost::Event& evt : batch.events) {
   }
 }
 ```
-- Drag-and-drop file events (draft).
+- Drag-and-drop file events (implemented on macOS).
 - Focus/activation events per surface (draft).
 
 ## Host Interface

@@ -56,7 +56,7 @@ class HostMac;
 @end
 
 @interface PHHostView : NSView
-<NSTextInputClient>
+<NSTextInputClient, NSDraggingDestination>
 @property(nonatomic, assign) PrimeHost::HostMac* host;
 @property(nonatomic, assign) uint64_t surfaceId;
 - (void)setImeRect:(NSRect)rect;
@@ -641,6 +641,7 @@ public:
   void releaseRelativePointer();
   void handleHidDeviceAttached(IOHIDDeviceRef device);
   void handleHidDeviceRemoved(IOHIDDeviceRef device);
+  void handleDrop(uint64_t surfaceId, NSArray<NSURL*>* urls);
   void updateCursorRects(uint64_t surfaceId, NSView* view);
   void handlePowerStateChange();
   void handleThermalStateChange();
@@ -774,6 +775,14 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
     markedRange_ = NSMakeRange(NSNotFound, 0);
     selectedRange_ = NSMakeRange(0, 0);
     imeRect_ = NSMakeRect(0, 0, 0, 0);
+    if (@available(macOS 10.13, *)) {
+      [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      [self registerForDraggedTypes:@[NSFilenamesPboardType]];
+#pragma clang diagnostic pop
+    }
   }
   return self;
 }
@@ -807,6 +816,40 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
   } else {
     [super resetCursorRects];
   }
+}
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+  if (!sender) {
+    return NSDragOperationNone;
+  }
+  NSPasteboard* pasteboard = [sender draggingPasteboard];
+  if (!pasteboard) {
+    return NSDragOperationNone;
+  }
+  NSArray<NSURL*>* urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                    options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+  return (urls && urls.count > 0) ? NSDragOperationCopy : NSDragOperationNone;
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+  return [self draggingEntered:sender];
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+  if (!self.host || !sender) {
+    return NO;
+  }
+  NSPasteboard* pasteboard = [sender draggingPasteboard];
+  if (!pasteboard) {
+    return NO;
+  }
+  NSArray<NSURL*>* urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                    options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+  if (!urls || urls.count == 0) {
+    return NO;
+  }
+  self.host->handleDrop(self.surfaceId, urls);
+  return YES;
 }
 
 - (void)mouseDown:(NSEvent*)event {
@@ -3206,6 +3249,53 @@ void HostMac::handleHidDeviceRemoved(IOHIDDeviceRef device) {
   hidDevicesById_.erase(it);
 }
 
+void HostMac::handleDrop(uint64_t surfaceId, NSArray<NSURL*>* urls) {
+  if (!urls || urls.count == 0) {
+    return;
+  }
+  auto* surface = findSurface(surfaceId);
+  if (!surface || !surface->window) {
+    return;
+  }
+
+  std::string text;
+  uint32_t count = 0u;
+  for (NSURL* url in urls) {
+    if (!url) {
+      continue;
+    }
+    NSString* path = url.path;
+    if (!path) {
+      continue;
+    }
+    NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data || data.length == 0) {
+      continue;
+    }
+    if (!text.empty()) {
+      text.push_back('\0');
+    }
+    text.append(reinterpret_cast<const char*>(data.bytes),
+                reinterpret_cast<const char*>(data.bytes) + data.length);
+    ++count;
+  }
+
+  if (count == 0u) {
+    return;
+  }
+
+  DropEvent drop{};
+  drop.count = count;
+  drop.paths = TextSpan{0u, static_cast<uint32_t>(text.size())};
+
+  Event event{};
+  event.scope = Event::Scope::Surface;
+  event.surfaceId = surface->surfaceId;
+  event.time = std::chrono::steady_clock::now();
+  event.payload = drop;
+  enqueueEvent(std::move(event), std::move(text));
+}
+
 void HostMac::handlePowerStateChange() {
   if (@available(macOS 12.0, *)) {
     Event event{};
@@ -3312,13 +3402,17 @@ HostResult<EventBatch> HostMac::buildBatch(std::span<const QueuedEvent> events, 
   TextBufferWriter writer{buffer.textBytes, 0u};
   for (size_t i = 0; i < count; ++i) {
     Event out = events[i].event;
-    if (auto* input = std::get_if<InputEvent>(&out.payload)) {
-      if (auto* text = std::get_if<TextEvent>(input)) {
-        auto span = writer.append(events[i].text);
-        if (!span) {
-          return std::unexpected(span.error());
+    if (!events[i].text.empty()) {
+      auto span = writer.append(events[i].text);
+      if (!span) {
+        return std::unexpected(span.error());
+      }
+      if (auto* input = std::get_if<InputEvent>(&out.payload)) {
+        if (auto* text = std::get_if<TextEvent>(input)) {
+          text->text = span.value();
         }
-        text->text = span.value();
+      } else if (auto* drop = std::get_if<DropEvent>(&out.payload)) {
+        drop->paths = span.value();
       }
     }
     buffer.events[i] = out;

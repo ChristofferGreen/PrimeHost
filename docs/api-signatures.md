@@ -373,6 +373,11 @@ struct ResizeEvent {
   float scale = 1.0f;
 };
 
+struct DropEvent {
+  uint32_t count = 0u;
+  TextSpan paths;
+};
+
 struct PowerEvent {
   std::optional<bool> lowPowerModeEnabled;
 };
@@ -390,7 +395,7 @@ struct Event {
   Scope scope = Scope::Surface;
   std::optional<SurfaceId> surfaceId;
   std::chrono::steady_clock::time_point time;
-  std::variant<InputEvent, ResizeEvent, PowerEvent, ThermalEvent, LifecycleEvent> payload;
+  std::variant<InputEvent, ResizeEvent, DropEvent, PowerEvent, ThermalEvent, LifecycleEvent> payload;
 };
 
 struct EventBuffer {
