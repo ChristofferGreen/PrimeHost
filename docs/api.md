@@ -11,6 +11,7 @@ platform-neutral and stable across backends.
 - `SurfaceConfig`: surface creation settings.
 - `SurfaceSize`: logical surface size in points.
 - `SurfacePoint`: logical surface position in points.
+- `DisplayInfo`: display bounds, scale, refresh, and identity.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
 - `HostStatus`, `HostResult<T>`, `HostError`: error reporting for host operations using `std::expected`.
@@ -26,7 +27,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Enumerate displays/monitors.
 - Surface-to-display mapping when possible.
 - Refresh rate, DPI/scale, color space, and bounds.
-- Surface assignment and preferred display policies (draft).
+- Implemented: `displays`, `displayInfo`, `surfaceDisplay` (bounds/scale/refresh; assignment policies still draft).
 
 ## Window Geometry (Draft)
 - Get/set window position and size in logical pixels (points).
@@ -145,6 +146,9 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::deviceInfo(deviceId) -> HostResult<DeviceInfo>`
 - `Host::deviceCapabilities(deviceId) -> HostResult<DeviceCapabilities>`
 - `Host::devices(span<DeviceInfo>) -> HostResult<size_t>`
+- `Host::displays(span<DisplayInfo>) -> HostResult<size_t>`
+- `Host::displayInfo(displayId) -> HostResult<DisplayInfo>`
+- `Host::surfaceDisplay(surfaceId) -> HostResult<uint32_t>`
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`

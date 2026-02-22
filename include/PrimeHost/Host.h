@@ -73,6 +73,7 @@ enum class HostErrorCode {
   Unknown,
   InvalidSurface,
   InvalidDevice,
+  InvalidDisplay,
   InvalidConfig,
   Unsupported,
   BufferTooSmall,
@@ -125,6 +126,17 @@ struct DeviceInfo {
   uint16_t vendorId = 0u;
   uint16_t productId = 0u;
   Utf8TextView name;
+};
+
+struct DisplayInfo {
+  uint32_t displayId = 0u;
+  int32_t x = 0;
+  int32_t y = 0;
+  uint32_t width = 0u;
+  uint32_t height = 0u;
+  float scale = 1.0f;
+  float refreshRate = 0.0f;
+  bool isPrimary = false;
 };
 
 struct FrameTiming {
@@ -343,6 +355,9 @@ public:
   virtual HostResult<DeviceInfo> deviceInfo(uint32_t deviceId) const = 0;
   virtual HostResult<DeviceCapabilities> deviceCapabilities(uint32_t deviceId) const = 0;
   virtual HostResult<size_t> devices(std::span<DeviceInfo> outDevices) const = 0;
+  virtual HostResult<size_t> displays(std::span<DisplayInfo> outDisplays) const = 0;
+  virtual HostResult<DisplayInfo> displayInfo(uint32_t displayId) const = 0;
+  virtual HostResult<uint32_t> surfaceDisplay(SurfaceId surfaceId) const = 0;
 
   virtual HostResult<SurfaceId> createSurface(const SurfaceConfig& config) = 0;
   virtual HostStatus destroySurface(SurfaceId surfaceId) = 0;

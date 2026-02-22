@@ -324,6 +324,9 @@ public:
   HostResult<DeviceInfo> deviceInfo(uint32_t deviceId) const override;
   HostResult<DeviceCapabilities> deviceCapabilities(uint32_t deviceId) const override;
   HostResult<size_t> devices(std::span<DeviceInfo> outDevices) const override;
+  HostResult<size_t> displays(std::span<DisplayInfo> outDisplays) const override;
+  HostResult<DisplayInfo> displayInfo(uint32_t displayId) const override;
+  HostResult<uint32_t> surfaceDisplay(SurfaceId surfaceId) const override;
 
   HostResult<SurfaceId> createSurface(const SurfaceConfig& config) override;
   HostStatus destroySurface(SurfaceId surfaceId) override;
@@ -910,6 +913,104 @@ HostResult<size_t> HostMac::devices(std::span<DeviceInfo> outDevices) const {
     }
   }
   return count;
+}
+
+HostResult<size_t> HostMac::displays(std::span<DisplayInfo> outDisplays) const {
+  uint32_t count = 0u;
+  if (CGGetActiveDisplayList(0, nullptr, &count) != kCGErrorSuccess) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  if (outDisplays.empty()) {
+    return static_cast<size_t>(count);
+  }
+  if (outDisplays.size() < count) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  std::vector<CGDirectDisplayID> ids(count);
+  if (CGGetActiveDisplayList(count, ids.data(), &count) != kCGErrorSuccess) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  size_t written = 0u;
+  for (CGDirectDisplayID id : ids) {
+    CGRect bounds = CGDisplayBounds(id);
+    DisplayInfo info{};
+    info.displayId = static_cast<uint32_t>(id);
+    info.x = static_cast<int32_t>(std::lround(bounds.origin.x));
+    info.y = static_cast<int32_t>(std::lround(bounds.origin.y));
+    info.width = static_cast<uint32_t>(std::lround(bounds.size.width));
+    info.height = static_cast<uint32_t>(std::lround(bounds.size.height));
+    info.scale = 1.0f;
+    for (NSScreen* screen in [NSScreen screens]) {
+      NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+      if (screenNumber && screenNumber.unsignedIntValue == id) {
+        info.scale = static_cast<float>(screen.backingScaleFactor);
+        break;
+      }
+    }
+    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(id);
+    if (mode) {
+      info.refreshRate = static_cast<float>(CGDisplayModeGetRefreshRate(mode));
+      CGDisplayModeRelease(mode);
+    }
+    info.isPrimary = (id == CGMainDisplayID());
+    outDisplays[written++] = info;
+  }
+  return written;
+}
+
+HostResult<DisplayInfo> HostMac::displayInfo(uint32_t displayId) const {
+  uint32_t count = 0u;
+  if (CGGetActiveDisplayList(0, nullptr, &count) != kCGErrorSuccess) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  std::vector<CGDirectDisplayID> ids(count);
+  if (CGGetActiveDisplayList(count, ids.data(), &count) != kCGErrorSuccess) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  for (CGDirectDisplayID id : ids) {
+    if (static_cast<uint32_t>(id) != displayId) {
+      continue;
+    }
+    CGRect bounds = CGDisplayBounds(id);
+    DisplayInfo info{};
+    info.displayId = static_cast<uint32_t>(id);
+    info.x = static_cast<int32_t>(std::lround(bounds.origin.x));
+    info.y = static_cast<int32_t>(std::lround(bounds.origin.y));
+    info.width = static_cast<uint32_t>(std::lround(bounds.size.width));
+    info.height = static_cast<uint32_t>(std::lround(bounds.size.height));
+    info.scale = 1.0f;
+    for (NSScreen* screen in [NSScreen screens]) {
+      NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+      if (screenNumber && screenNumber.unsignedIntValue == id) {
+        info.scale = static_cast<float>(screen.backingScaleFactor);
+        break;
+      }
+    }
+    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(id);
+    if (mode) {
+      info.refreshRate = static_cast<float>(CGDisplayModeGetRefreshRate(mode));
+      CGDisplayModeRelease(mode);
+    }
+    info.isPrimary = (id == CGMainDisplayID());
+    return info;
+  }
+  return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+}
+
+HostResult<uint32_t> HostMac::surfaceDisplay(SurfaceId surfaceId) const {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  NSScreen* screen = surface->window.screen;
+  if (!screen) {
+    return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+  }
+  NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+  if (!screenNumber) {
+    return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+  }
+  return static_cast<uint32_t>(screenNumber.unsignedIntValue);
 }
 
 HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
