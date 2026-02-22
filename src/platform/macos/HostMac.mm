@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstring>
 #include <dlfcn.h>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -591,6 +592,9 @@ public:
   HostResult<size_t> clipboardPathsCount() const override;
   HostResult<ClipboardPathsResult> clipboardPaths(std::span<TextSpan> outPaths,
                                                   std::span<char> buffer) const override;
+  HostResult<std::optional<ImageSize>> clipboardImageSize() const override;
+  HostResult<ClipboardImageResult> clipboardImage(std::span<uint8_t> buffer) const override;
+  HostStatus setClipboardImage(const ImageData& image) override;
   HostStatus writeSurfaceScreenshot(SurfaceId surfaceId,
                                     Utf8TextView path,
                                     const ScreenshotConfig& config) override;
@@ -2058,6 +2062,151 @@ HostResult<ClipboardPathsResult> HostMac::clipboardPaths(std::span<TextSpan> out
     return result;
   }
   return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<std::optional<ImageSize>> HostMac::clipboardImageSize() const {
+  if (@available(macOS 10.13, *)) {
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    NSArray<NSImage*>* images = [pasteboard readObjectsForClasses:@[[NSImage class]] options:nil];
+    if (!images || images.count == 0) {
+      return std::optional<ImageSize>{};
+    }
+    NSImage* image = images.firstObject;
+    if (!image) {
+      return std::optional<ImageSize>{};
+    }
+    NSBitmapImageRep* rep = nil;
+    for (NSImageRep* imageRep in image.representations) {
+      if ([imageRep isKindOfClass:[NSBitmapImageRep class]]) {
+        rep = (NSBitmapImageRep*)imageRep;
+        break;
+      }
+    }
+    if (!rep) {
+      rep = [NSBitmapImageRep imageRepWithData:[image TIFFRepresentation]];
+    }
+    if (!rep) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    ImageSize size{};
+    size.width = static_cast<uint32_t>(rep.pixelsWide);
+    size.height = static_cast<uint32_t>(rep.pixelsHigh);
+    if (size.width == 0u || size.height == 0u) {
+      return std::optional<ImageSize>{};
+    }
+    return std::optional<ImageSize>{size};
+  }
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<ClipboardImageResult> HostMac::clipboardImage(std::span<uint8_t> buffer) const {
+  if (buffer.empty()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  if (@available(macOS 10.13, *)) {
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    NSArray<NSImage*>* images = [pasteboard readObjectsForClasses:@[[NSImage class]] options:nil];
+    ClipboardImageResult result{};
+    result.available = false;
+    result.pixels = std::span<const uint8_t>();
+    if (!images || images.count == 0) {
+      return result;
+    }
+    NSImage* image = images.firstObject;
+    if (!image) {
+      return result;
+    }
+    NSRect rect = NSMakeRect(0, 0, image.size.width, image.size.height);
+    CGImageRef cgImage = [image CGImageForProposedRect:&rect context:nil hints:nil];
+    if (!cgImage) {
+      NSBitmapImageRep* rep = [NSBitmapImageRep imageRepWithData:[image TIFFRepresentation]];
+      if (!rep) {
+        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      }
+      cgImage = rep.CGImage;
+    }
+    if (!cgImage) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    size_t width = static_cast<size_t>(CGImageGetWidth(cgImage));
+    size_t height = static_cast<size_t>(CGImageGetHeight(cgImage));
+    if (width == 0u || height == 0u) {
+      return result;
+    }
+    size_t required = width * height * 4u;
+    if (buffer.size() < required) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    if (!colorSpace) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    CGBitmapInfo bitmapInfo =
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big;
+    CGContextRef context = CGBitmapContextCreate(buffer.data(),
+                                                 width,
+                                                 height,
+                                                 8,
+                                                 width * 4u,
+                                                 colorSpace,
+                                                 bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    CGContextTranslateCTM(context, 0, height);
+    CGContextScaleCTM(context, 1, -1);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), cgImage);
+    CGContextRelease(context);
+
+    result.available = true;
+    result.size = ImageSize{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+    result.pixels = std::span<const uint8_t>(buffer.data(), required);
+    return result;
+  }
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostStatus HostMac::setClipboardImage(const ImageData& image) {
+  if (image.size.width == 0u || image.size.height == 0u || image.pixels.empty()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  size_t width = static_cast<size_t>(image.size.width);
+  size_t height = static_cast<size_t>(image.size.height);
+  if (width > (std::numeric_limits<size_t>::max() / height) / 4u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  size_t pixelCount = width * height * 4u;
+  if (image.pixels.size() < pixelCount) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+
+  NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+      initWithBitmapDataPlanes:nullptr
+                    pixelsWide:static_cast<NSInteger>(width)
+                    pixelsHigh:static_cast<NSInteger>(height)
+                 bitsPerSample:8
+               samplesPerPixel:4
+                      hasAlpha:YES
+                      isPlanar:NO
+                colorSpaceName:NSDeviceRGBColorSpace
+                   bytesPerRow:static_cast<NSInteger>(width) * 4
+                  bitsPerPixel:32];
+  if (!rep) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  std::memcpy(rep.bitmapData, image.pixels.data(), pixelCount);
+  NSImage* nsImage = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+  if (!nsImage) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  [nsImage addRepresentation:rep];
+  NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+  [pasteboard clearContents];
+  if (![pasteboard writeObjects:@[nsImage]]) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  return {};
 }
 
 HostStatus HostMac::writeSurfaceScreenshot(SurfaceId surfaceId,

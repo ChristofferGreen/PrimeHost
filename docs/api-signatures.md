@@ -195,6 +195,16 @@ struct CursorImage {
   std::span<const uint8_t> pixels;
 };
 
+struct ImageSize {
+  uint32_t width = 0u;
+  uint32_t height = 0u;
+};
+
+struct ImageData {
+  ImageSize size;
+  std::span<const uint8_t> pixels;
+};
+
 struct FileDialogConfig {
   FileDialogMode mode = FileDialogMode::OpenFile;
   std::optional<Utf8TextView> title;
@@ -265,6 +275,12 @@ struct TextSpan {
 struct ClipboardPathsResult {
   bool available = false;
   std::span<const TextSpan> paths;
+};
+
+struct ClipboardImageResult {
+  bool available = false;
+  ImageSize size;
+  std::span<const uint8_t> pixels;
 };
 
 struct ScreenshotConfig {
@@ -475,6 +491,9 @@ public:
   virtual HostResult<size_t> clipboardPathsCount() const = 0;
   virtual HostResult<ClipboardPathsResult> clipboardPaths(std::span<TextSpan> outPaths,
                                                          std::span<char> buffer) const = 0;
+  virtual HostResult<std::optional<ImageSize>> clipboardImageSize() const = 0;
+  virtual HostResult<ClipboardImageResult> clipboardImage(std::span<uint8_t> buffer) const = 0;
+  virtual HostStatus setClipboardImage(const ImageData& image) = 0;
   virtual HostStatus writeSurfaceScreenshot(SurfaceId surfaceId,
                                             Utf8TextView path,
                                             const ScreenshotConfig& config = {}) = 0;

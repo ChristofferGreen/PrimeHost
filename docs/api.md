@@ -126,6 +126,7 @@ host->setCursorImage(surfaceId, cursor);
 - Default: text-only on platforms without richer formats.
 - Implemented: `clipboardTextSize`, `clipboardText`, `setClipboardText` (text-only).
 - Implemented: `clipboardPathsTextSize`, `clipboardPathsCount`, `clipboardPaths` (macOS file URLs).
+- Implemented: `clipboardImageSize`, `clipboardImage`, `setClipboardImage` (macOS, RGBA8).
 
 Example (file paths):
 ```cpp
@@ -136,6 +137,19 @@ if (result && result->available) {
   for (const auto& span : result->paths) {
     std::string_view path(bytes.data() + span.offset, span.length);
     // use path
+  }
+}
+```
+
+Example (image read):
+```cpp
+auto size = host->clipboardImageSize();
+if (size && size->has_value()) {
+  const auto dims = size->value();
+  std::vector<uint8_t> pixels(dims.width * dims.height * 4);
+  auto image = host->clipboardImage(pixels);
+  if (image && image->available) {
+    // pixels contains RGBA8 image data
   }
 }
 ```

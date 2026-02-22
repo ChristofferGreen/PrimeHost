@@ -120,6 +120,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_clipboard.cpp
     tests/unit/test_clipboard_size.cpp
     tests/unit/test_clipboard_paths.cpp
+    tests/unit/test_clipboard_image.cpp
     tests/unit/test_screenshot.cpp
     tests/unit/test_app_paths.cpp
     tests/unit/test_file_dialogs.cpp
