@@ -199,4 +199,19 @@ PH_TEST("primehost.audio", "unsupported sample format") {
   }
 }
 
+PH_TEST("primehost.audio", "start without stream") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto status = audio->startStream();
+  PH_CHECK(!status.has_value());
+  if (!status.has_value()) {
+    PH_CHECK(status.error().code == HostErrorCode::InvalidConfig);
+  }
+}
+
 TEST_SUITE_END();
