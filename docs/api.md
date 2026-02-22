@@ -359,7 +359,7 @@ for (const auto& evt : batch->events) {
 - Clipboard read/write (implemented), IME composition events (draft).
 - Cursor visibility + relative pointer mode (implemented), confine (draft).
 - Window state controls and DPI/scale queries (implemented).
-- Timing utilities for sleep/pacing (draft).
+- Timing utilities for sleep/pacing (implemented).
 - Host-level logging callback/hook (draft).
 - Window geometry APIs (implemented).
 - Custom cursor images (implemented on macOS).
@@ -381,10 +381,14 @@ for (const auto& evt : batch->events) {
 - `FpsTracker`, `FpsStats`, `computeFpsStats`
 - Internal timing, rolling sample capacity, report throttling via `shouldReport()`.
 
+## Timing Utility
+- `now()`, `sleepFor()`, `sleepUntil()` in `PrimeHost/Timing.h`.
+
 ## Audio Output
 Audio APIs are defined in `docs/audio.md` and are intended to be a low-level output layer only.
 
 ## Header References
 - `include/PrimeHost/Host.h`
 - `include/PrimeHost/Fps.h`
+- `include/PrimeHost/Timing.h`
 - `include/PrimeHost/PrimeHost.h`

@@ -600,6 +600,21 @@ FpsStats computeFpsStats(std::span<const std::chrono::nanoseconds> frameTimes);
 } // namespace PrimeHost
 ```
 
+## Timing Utility (from `include/PrimeHost/Timing.h`)
+```cpp
+namespace PrimeHost {
+
+using SteadyClock = std::chrono::steady_clock;
+
+SteadyClock::time_point now();
+
+void sleepFor(std::chrono::nanoseconds duration);
+
+void sleepUntil(SteadyClock::time_point target);
+
+} // namespace PrimeHost
+```
+
 ## Audio Output (Draft, from `docs/audio.md`)
 ```cpp
 namespace PrimeHost {

@@ -5,6 +5,7 @@
 #include "PrimeHost/Audio.h"
 #include "PrimeHost/Fps.h"
 #include "PrimeHost/Host.h"
+#include "PrimeHost/Timing.h"
 
 namespace PrimeHost {
 
