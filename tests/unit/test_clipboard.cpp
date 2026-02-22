@@ -106,6 +106,13 @@ PH_TEST("primehost.clipboard", "empty clipboard size") {
     return;
   }
   PH_CHECK(size.value() == 0u);
+
+  std::array<char, 1> buffer{};
+  auto read = host->clipboardText(buffer);
+  PH_CHECK(read.has_value());
+  if (read.has_value()) {
+    PH_CHECK(read->size() == 0u);
+  }
 }
 
 TEST_SUITE_END();
