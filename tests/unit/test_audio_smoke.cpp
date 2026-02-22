@@ -249,4 +249,19 @@ PH_TEST("primehost.audio", "invalid channel count") {
   }
 }
 
+PH_TEST("primehost.audio", "stop without stream") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto status = audio->stopStream();
+  PH_CHECK(!status.has_value());
+  if (!status.has_value()) {
+    PH_CHECK(status.error().code == HostErrorCode::InvalidConfig);
+  }
+}
+
 TEST_SUITE_END();
