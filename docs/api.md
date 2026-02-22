@@ -71,7 +71,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Controller LEDs / Lightbar (Draft)
 - Set per-gamepad LED or lightbar color when supported.
 - Default: system/driver color.
-- Implemented: `setGamepadLight` (macOS: returns `Unsupported`).
+- Implemented: `setGamepadLight` (macOS 11+, requires controller light support).
 
 ## Localization / IME Language (Draft)
 - Query current locale and active IME language tag.

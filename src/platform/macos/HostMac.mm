@@ -1906,12 +1906,20 @@ HostStatus HostMac::endIdleSleepInhibit(uint64_t token) {
 }
 
 HostStatus HostMac::setGamepadLight(uint32_t deviceId, float r, float g, float b) {
-  (void)r;
-  (void)g;
-  (void)b;
   auto controllerIt = gamepadControllers_.find(deviceId);
   if (controllerIt == gamepadControllers_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidDevice});
+  }
+  if (@available(macOS 11.0, *)) {
+    GCController* controller = controllerIt->second;
+    if (!controller || !controller.light) {
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
+    }
+    float red = std::clamp(r, 0.0f, 1.0f);
+    float green = std::clamp(g, 0.0f, 1.0f);
+    float blue = std::clamp(b, 0.0f, 1.0f);
+    controller.light.color = [[GCColor alloc] initWithRed:red green:green blue:blue];
+    return {};
   }
   return std::unexpected(HostError{HostErrorCode::Unsupported});
 }
