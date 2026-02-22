@@ -339,6 +339,7 @@ public:
   HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
   HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const override;
   HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) override;
+  HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1192,6 +1193,19 @@ HostStatus HostMac::setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y
   frame.origin.x = static_cast<CGFloat>(x);
   frame.origin.y = static_cast<CGFloat>(y);
   [surface->window setFrame:frame display:YES];
+  return {};
+}
+
+HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (visible) {
+    [NSCursor unhide];
+  } else {
+    [NSCursor hide];
+  }
   return {};
 }
 

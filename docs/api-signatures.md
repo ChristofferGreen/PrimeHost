@@ -301,6 +301,7 @@ public:
   virtual HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
   virtual HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) = 0;
+  virtual HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,

@@ -37,6 +37,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Cursor (Draft)
 - Standard cursor shapes plus custom cursor image support.
 - Defaults: system arrow cursor; cursor visible unless explicitly hidden.
+- Implemented: `setCursorVisible` (visibility only).
 
 ## Safe-Area Insets (Draft)
 - Per-surface safe-area insets for notches/rounded corners.
@@ -139,7 +140,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
-- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`
+- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 
