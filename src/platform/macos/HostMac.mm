@@ -118,6 +118,27 @@ WindowImageFn window_image_fn() {
   return fn;
 }
 
+char ascii_lower(char value) {
+  if (value >= 'A' && value <= 'Z') {
+    return static_cast<char>(value + ('a' - 'A'));
+  }
+  return value;
+}
+
+bool has_png_extension(Utf8TextView path) {
+  if (path.size() < 4u) {
+    return false;
+  }
+  const size_t offset = path.size() - 4u;
+  const char* data = path.data();
+  if (data[offset] != '.') {
+    return false;
+  }
+  return ascii_lower(data[offset + 1]) == 'p' &&
+         ascii_lower(data[offset + 2]) == 'n' &&
+         ascii_lower(data[offset + 3]) == 'g';
+}
+
 uint16_t hid_uint16_property(IOHIDDeviceRef device, CFStringRef key) {
   if (!device || !key) {
     return 0u;
@@ -2407,6 +2428,9 @@ HostStatus HostMac::writeSurfaceScreenshot(SurfaceId surfaceId,
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (path.empty()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  if (!has_png_extension(path)) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   NSString* nsPath = utf8_to_nsstring(path);

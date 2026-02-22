@@ -484,4 +484,47 @@ PH_TEST("primehost.audio", "period clamped to buffer") {
   audio->closeStream();
 }
 
+PH_TEST("primehost.audio", "start and stop stream") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto defaultDevice = audio->defaultOutputDevice();
+  if (!defaultDevice) {
+    PH_CHECK(defaultDevice.error().code == HostErrorCode::DeviceUnavailable);
+    return;
+  }
+
+  AudioStreamConfig config{};
+  config.format.sampleRate = 48000;
+  config.format.channels = 2;
+  config.format.format = SampleFormat::Float32;
+  config.format.interleaved = true;
+  config.bufferFrames = 256;
+  config.periodFrames = 128;
+
+  auto callback = [](std::span<float> interleaved, const AudioCallbackContext&, void*) {
+    for (float& sample : interleaved) {
+      sample = 0.0f;
+    }
+  };
+
+  auto openStatus = audio->openStream(defaultDevice.value(), config, callback, nullptr);
+  if (!openStatus.has_value()) {
+    bool allowed = openStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || openStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto startStatus = audio->startStream();
+  PH_CHECK(startStatus.has_value());
+  auto stopStatus = audio->stopStream();
+  PH_CHECK(stopStatus.has_value());
+  audio->closeStream();
+}
+
 TEST_SUITE_END();
