@@ -53,6 +53,13 @@ inline float normalizedScrollDelta(double value) {
   if (!std::isfinite(value)) {
     return 0.0f;
   }
+  constexpr double kMax = static_cast<double>(std::numeric_limits<float>::max());
+  if (value >= kMax) {
+    return std::numeric_limits<float>::max();
+  }
+  if (value <= -kMax) {
+    return -std::numeric_limits<float>::max();
+  }
   return static_cast<float>(value);
 }
 

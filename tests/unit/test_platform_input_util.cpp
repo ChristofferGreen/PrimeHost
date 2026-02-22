@@ -71,6 +71,8 @@ PH_TEST("primehost.input.util", "normalized pressure ignores non finite") {
 PH_TEST("primehost.input.util", "normalized scroll delta") {
   PH_CHECK(normalizedScrollDelta(1.5) == 1.5f);
   PH_CHECK(normalizedScrollDelta(-2.0) == -2.0f);
+  PH_CHECK(normalizedScrollDelta(1e300) == std::numeric_limits<float>::max());
+  PH_CHECK(normalizedScrollDelta(-1e300) == -std::numeric_limits<float>::max());
 }
 
 PH_TEST("primehost.input.util", "normalized scroll delta ignores non finite") {
