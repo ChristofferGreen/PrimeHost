@@ -67,9 +67,19 @@ PH_TEST("primehost.extensions", "background and tray unsupported") {
   auto host = std::move(hostResult.value());
 
   auto background = host->beginBackgroundTask("PrimeHost Tests");
-  PH_CHECK(!background.has_value());
   if (!background.has_value()) {
-    PH_CHECK(background.error().code == HostErrorCode::Unsupported);
+    bool allowed = background.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || background.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+  } else {
+    auto end = host->endBackgroundTask(background.value());
+    PH_CHECK(end.has_value());
+
+    auto endAgain = host->endBackgroundTask(background.value());
+    PH_CHECK(!endAgain.has_value());
+    if (!endAgain.has_value()) {
+      PH_CHECK(endAgain.error().code == HostErrorCode::InvalidConfig);
+    }
   }
 
   auto tray = host->createTrayItem("PrimeHost");

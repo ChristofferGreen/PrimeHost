@@ -456,6 +456,8 @@ private:
   uint64_t nextIdleSleepToken_ = 1u;
   std::unordered_map<uint64_t, IOPMAssertionID> idleSleepAssertions_;
   std::unordered_map<uint64_t, NSStatusItem*> trayItems_;
+  uint64_t nextBackgroundToken_ = 1u;
+  std::unordered_map<uint64_t, id> backgroundActivities_;
   mutable std::string localeLanguage_;
   mutable std::string localeRegion_;
   mutable std::string imeLanguage_;
@@ -864,6 +866,13 @@ HostMac::~HostMac() {
       [bar removeStatusItem:entry.second];
     }
     trayItems_.clear();
+  }
+  if (!backgroundActivities_.empty()) {
+    NSProcessInfo* processInfo = [NSProcessInfo processInfo];
+    for (const auto& entry : backgroundActivities_) {
+      [processInfo endActivity:entry.second];
+    }
+    backgroundActivities_.clear();
   }
   if (gamepadConnectObserver_) {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadConnectObserver_];
@@ -1698,13 +1707,36 @@ HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
 }
 
 HostResult<uint64_t> HostMac::beginBackgroundTask(Utf8TextView reason) {
-  (void)reason;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  NSString* nsReason = nil;
+  if (!reason.empty()) {
+    nsReason = [[NSString alloc] initWithBytes:reason.data()
+                                        length:static_cast<NSUInteger>(reason.size())
+                                      encoding:NSUTF8StringEncoding];
+  }
+  if (!nsReason) {
+    nsReason = @"PrimeHost Background Task";
+  }
+  NSProcessInfo* processInfo = [NSProcessInfo processInfo];
+  id activity = [processInfo beginActivityWithOptions:NSActivityUserInitiated reason:nsReason];
+  if (!activity) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  uint64_t token = nextBackgroundToken_++;
+  if (token == 0u) {
+    token = nextBackgroundToken_++;
+  }
+  backgroundActivities_.emplace(token, activity);
+  return token;
 }
 
 HostStatus HostMac::endBackgroundTask(uint64_t token) {
-  (void)token;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  auto it = backgroundActivities_.find(token);
+  if (it == backgroundActivities_.end()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  [[NSProcessInfo processInfo] endActivity:it->second];
+  backgroundActivities_.erase(it);
+  return {};
 }
 
 HostResult<uint64_t> HostMac::createTrayItem(Utf8TextView title) {

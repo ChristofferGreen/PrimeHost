@@ -81,7 +81,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Background Tasks (Draft)
 - Keep-alive/background task tokens for mobile platforms.
 - Default: unsupported on desktop.
-- Implemented: `beginBackgroundTask`, `endBackgroundTask` (macOS: returns `Unsupported`).
+- Implemented: `beginBackgroundTask`, `endBackgroundTask` (macOS).
 
 ## System Tray / Menu Bar (Draft)
 - Create/remove tray items and menu entries.
