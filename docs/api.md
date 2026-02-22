@@ -12,6 +12,8 @@ platform-neutral and stable across backends.
 - `SurfaceSize`: logical surface size in points.
 - `SurfacePoint`: logical surface position in points.
 - `DisplayInfo`: display bounds, scale, refresh, and identity.
+- `PermissionType`, `PermissionStatus`: permission categories and states.
+- `LocaleInfo`: locale language/region tags.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
 - `HostStatus`, `HostResult<T>`, `HostError`: error reporting for host operations using `std::expected`.
@@ -58,27 +60,33 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Permissions (Draft)
 - Camera/microphone/location permission queries and requests.
 - Default: unknown until queried; platforms may require prompts.
+- Implemented: `checkPermission`, `requestPermission` (macOS: returns `Unsupported`).
 
 ## Idle Sleep / Screensaver (Draft)
 - Inhibit idle sleep or screensaver while critical work is active.
 - Default: no inhibition.
+- Implemented: `beginIdleSleepInhibit`, `endIdleSleepInhibit` (macOS).
 
 ## Controller LEDs / Lightbar (Draft)
 - Set per-gamepad LED or lightbar color when supported.
 - Default: system/driver color.
+- Implemented: `setGamepadLight` (macOS: returns `Unsupported`).
 
 ## Localization / IME Language (Draft)
 - Query current locale and active IME language tag.
 - Default: platform locale; IME language may be empty when unavailable.
 - IME composition caret/selection placement to position candidate windows.
+- Implemented: `localeInfo`, `imeLanguageTag` (macOS).
 
 ## Background Tasks (Draft)
 - Keep-alive/background task tokens for mobile platforms.
 - Default: unsupported on desktop.
+- Implemented: `beginBackgroundTask`, `endBackgroundTask` (macOS: returns `Unsupported`).
 
 ## System Tray / Menu Bar (Draft)
 - Create/remove tray items and menu entries.
 - Default: unsupported on platforms without a tray/menu bar.
+- Implemented: `createTrayItem`, `updateTrayItemTitle`, `removeTrayItem` (macOS: returns `Unsupported`).
 
 ## Power / Thermal (Draft)
 - Global events for low-power mode and thermal warnings.
@@ -155,6 +163,12 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
 - `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`, `surfaceScale`, `setSurfaceMinSize`, `setSurfaceMaxSize`
 - `Host::setGamepadRumble`
+- `Host::checkPermission`, `requestPermission`
+- `Host::beginIdleSleepInhibit`, `endIdleSleepInhibit`
+- `Host::setGamepadLight`
+- `Host::localeInfo`, `imeLanguageTag`
+- `Host::beginBackgroundTask`, `endBackgroundTask`
+- `Host::createTrayItem`, `updateTrayItemTitle`, `removeTrayItem`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 
 ## Validation Helpers

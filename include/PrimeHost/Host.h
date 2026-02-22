@@ -100,6 +100,21 @@ struct HostCapabilities {
   bool supportsHeadless = false;
 };
 
+enum class PermissionType {
+  Camera,
+  Microphone,
+  Location,
+  Photos,
+  Notifications,
+};
+
+enum class PermissionStatus {
+  Unknown,
+  Granted,
+  Denied,
+  Restricted,
+};
+
 struct SurfaceCapabilities {
   bool supportsVsyncToggle = false;
   bool supportsTearing = false;
@@ -126,6 +141,11 @@ struct DeviceInfo {
   uint16_t vendorId = 0u;
   uint16_t productId = 0u;
   Utf8TextView name;
+};
+
+struct LocaleInfo {
+  Utf8TextView languageTag;
+  Utf8TextView regionTag;
 };
 
 struct DisplayInfo {
@@ -387,12 +407,24 @@ public:
   virtual HostStatus setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
+  virtual HostResult<PermissionStatus> checkPermission(PermissionType type) const = 0;
+  virtual HostResult<PermissionStatus> requestPermission(PermissionType type) = 0;
+  virtual HostResult<uint64_t> beginIdleSleepInhibit(Utf8TextView reason) = 0;
+  virtual HostStatus endIdleSleepInhibit(uint64_t token) = 0;
+  virtual HostStatus setGamepadLight(uint32_t deviceId, float r, float g, float b) = 0;
+  virtual HostResult<LocaleInfo> localeInfo() const = 0;
+  virtual HostResult<Utf8TextView> imeLanguageTag() const = 0;
 
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,
                                            int32_t x,
                                            int32_t y,
                                            int32_t width,
                                            int32_t height) = 0;
+  virtual HostResult<uint64_t> beginBackgroundTask(Utf8TextView reason) = 0;
+  virtual HostStatus endBackgroundTask(uint64_t token) = 0;
+  virtual HostResult<uint64_t> createTrayItem(Utf8TextView title) = 0;
+  virtual HostStatus updateTrayItemTitle(uint64_t trayId, Utf8TextView title) = 0;
+  virtual HostStatus removeTrayItem(uint64_t trayId) = 0;
   virtual HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) = 0;
 
   virtual HostStatus setCallbacks(Callbacks callbacks) = 0;

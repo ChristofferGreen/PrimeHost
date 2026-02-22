@@ -10,6 +10,7 @@
 #import <IOKit/hid/IOHIDDevice.h>
 #import <IOKit/hid/IOHIDKeys.h>
 #import <IOKit/hid/IOHIDUsageTables.h>
+#import <IOKit/pwr_mgt/IOPMLib.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -111,6 +112,23 @@ std::string hid_string_property(IOHIDDeviceRef device, CFStringRef key) {
     return std::string(buffer);
   }
   return {};
+}
+
+std::string cfstring_to_utf8(CFStringRef value) {
+  if (!value) {
+    return {};
+  }
+  CFIndex length = CFStringGetLength(value);
+  CFIndex maxSize = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8);
+  if (maxSize <= 0) {
+    return {};
+  }
+  std::string buffer(static_cast<size_t>(maxSize), '\0');
+  if (!CFStringGetCString(value, buffer.data(), static_cast<CFIndex>(buffer.size()), kCFStringEncodingUTF8)) {
+    return {};
+  }
+  buffer.resize(std::strlen(buffer.c_str()));
+  return buffer;
 }
 
 uint64_t hid_device_id(IOHIDDeviceRef device) {
@@ -356,11 +374,23 @@ public:
   HostStatus setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
+  HostResult<PermissionStatus> checkPermission(PermissionType type) const override;
+  HostResult<PermissionStatus> requestPermission(PermissionType type) override;
+  HostResult<uint64_t> beginIdleSleepInhibit(Utf8TextView reason) override;
+  HostStatus endIdleSleepInhibit(uint64_t token) override;
+  HostStatus setGamepadLight(uint32_t deviceId, float r, float g, float b) override;
+  HostResult<LocaleInfo> localeInfo() const override;
+  HostResult<Utf8TextView> imeLanguageTag() const override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
                                    int32_t x,
                                    int32_t y,
                                    int32_t width,
                                    int32_t height) override;
+  HostResult<uint64_t> beginBackgroundTask(Utf8TextView reason) override;
+  HostStatus endBackgroundTask(uint64_t token) override;
+  HostResult<uint64_t> createTrayItem(Utf8TextView title) override;
+  HostStatus updateTrayItemTitle(uint64_t trayId, Utf8TextView title) override;
+  HostStatus removeTrayItem(uint64_t trayId) override;
   HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) override;
 
   HostStatus setCallbacks(Callbacks callbacks) override;
@@ -422,6 +452,11 @@ private:
   std::optional<std::chrono::nanoseconds> displayInterval_{};
   bool relativePointerEnabled_ = false;
   std::optional<SurfaceId> relativePointerSurface_{};
+  uint64_t nextIdleSleepToken_ = 1u;
+  std::unordered_map<uint64_t, IOPMAssertionID> idleSleepAssertions_;
+  mutable std::string localeLanguage_;
+  mutable std::string localeRegion_;
+  mutable std::string imeLanguage_;
 };
 
 } // namespace PrimeHost
@@ -815,6 +850,12 @@ HostMac::HostMac() {
 
 HostMac::~HostMac() {
   releaseRelativePointer();
+  for (const auto& entry : idleSleepAssertions_) {
+    if (entry.second != kIOPMNullAssertionID) {
+      IOPMAssertionRelease(entry.second);
+    }
+  }
+  idleSleepAssertions_.clear();
   if (gamepadConnectObserver_) {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadConnectObserver_];
     gamepadConnectObserver_ = nil;
@@ -1529,6 +1570,104 @@ HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
   return std::unexpected(HostError{HostErrorCode::Unsupported});
 }
 
+HostResult<PermissionStatus> HostMac::checkPermission(PermissionType type) const {
+  (void)type;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<PermissionStatus> HostMac::requestPermission(PermissionType type) {
+  (void)type;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<uint64_t> HostMac::beginIdleSleepInhibit(Utf8TextView reason) {
+  CFStringRef reasonRef = nullptr;
+  bool releaseReason = false;
+  if (!reason.empty()) {
+    reasonRef = CFStringCreateWithBytes(kCFAllocatorDefault,
+                                        reinterpret_cast<const UInt8*>(reason.data()),
+                                        static_cast<CFIndex>(reason.size()),
+                                        kCFStringEncodingUTF8,
+                                        false);
+    releaseReason = (reasonRef != nullptr);
+  }
+  if (!reasonRef) {
+    reasonRef = CFSTR("PrimeHost Idle Sleep");
+  }
+  IOPMAssertionID assertionId = kIOPMNullAssertionID;
+  IOReturn result = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep,
+                                                kIOPMAssertionLevelOn,
+                                                reasonRef,
+                                                &assertionId);
+  if (releaseReason) {
+    CFRelease(reasonRef);
+  }
+  if (result != kIOReturnSuccess || assertionId == kIOPMNullAssertionID) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+
+  uint64_t token = nextIdleSleepToken_++;
+  if (token == 0u) {
+    token = nextIdleSleepToken_++;
+  }
+  idleSleepAssertions_.emplace(token, assertionId);
+  return token;
+}
+
+HostStatus HostMac::endIdleSleepInhibit(uint64_t token) {
+  auto it = idleSleepAssertions_.find(token);
+  if (it == idleSleepAssertions_.end()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  if (IOPMAssertionRelease(it->second) != kIOReturnSuccess) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  idleSleepAssertions_.erase(it);
+  return {};
+}
+
+HostStatus HostMac::setGamepadLight(uint32_t deviceId, float r, float g, float b) {
+  (void)r;
+  (void)g;
+  (void)b;
+  auto controllerIt = gamepadControllers_.find(deviceId);
+  if (controllerIt == gamepadControllers_.end()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidDevice});
+  }
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<LocaleInfo> HostMac::localeInfo() const {
+  NSLocale* locale = [NSLocale autoupdatingCurrentLocale];
+  NSString* language = [locale objectForKey:NSLocaleLanguageCode];
+  NSString* region = [locale objectForKey:NSLocaleCountryCode];
+  const char* languageBytes = language ? [language UTF8String] : nullptr;
+  const char* regionBytes = region ? [region UTF8String] : nullptr;
+  localeLanguage_ = languageBytes ? languageBytes : "";
+  localeRegion_ = regionBytes ? regionBytes : "";
+  LocaleInfo info{};
+  info.languageTag = localeLanguage_;
+  info.regionTag = localeRegion_;
+  return info;
+}
+
+HostResult<Utf8TextView> HostMac::imeLanguageTag() const {
+  imeLanguage_.clear();
+  TISInputSourceRef source = TISCopyCurrentKeyboardInputSource();
+  if (source) {
+    CFArrayRef languages = static_cast<CFArrayRef>(
+        TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages));
+    if (languages && CFArrayGetCount(languages) > 0) {
+      CFTypeRef value = CFArrayGetValueAtIndex(languages, 0);
+      if (value && CFGetTypeID(value) == CFStringGetTypeID()) {
+        imeLanguage_ = cfstring_to_utf8(static_cast<CFStringRef>(value));
+      }
+    }
+    CFRelease(source);
+  }
+  return Utf8TextView{imeLanguage_};
+}
+
 HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
                                           int32_t x,
                                           int32_t y,
@@ -1547,6 +1686,32 @@ HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
     [[surface->view inputContext] invalidateCharacterCoordinates];
   }
   return {};
+}
+
+HostResult<uint64_t> HostMac::beginBackgroundTask(Utf8TextView reason) {
+  (void)reason;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostStatus HostMac::endBackgroundTask(uint64_t token) {
+  (void)token;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<uint64_t> HostMac::createTrayItem(Utf8TextView title) {
+  (void)title;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostStatus HostMac::updateTrayItemTitle(uint64_t trayId, Utf8TextView title) {
+  (void)trayId;
+  (void)title;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostStatus HostMac::removeTrayItem(uint64_t trayId) {
+  (void)trayId;
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
 }
 
 HostStatus HostMac::setRelativePointerCapture(SurfaceId surfaceId, bool enabled) {

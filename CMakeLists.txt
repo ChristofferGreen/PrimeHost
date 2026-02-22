@@ -56,6 +56,7 @@ target_include_directories(PrimeHost
 ph_require_cxx23(PrimeHost)
 
 if(APPLE)
+  find_library(CARBON_LIBRARY Carbon)
   find_library(COCOA_LIBRARY Cocoa)
   find_library(GAMECONTROLLER_LIBRARY GameController)
   find_library(COREGRAPHICS_LIBRARY CoreGraphics)
@@ -67,6 +68,7 @@ if(APPLE)
   find_library(IOKIT_LIBRARY IOKit)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
   target_link_libraries(PrimeHost PRIVATE
+    ${CARBON_LIBRARY}
     ${COCOA_LIBRARY}
     ${GAMECONTROLLER_LIBRARY}
     ${COREGRAPHICS_LIBRARY}
@@ -107,6 +109,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_surface_constraints.cpp
     tests/unit/test_displays.cpp
     tests/unit/test_surface_display.cpp
+    tests/unit/test_host_extensions.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp
