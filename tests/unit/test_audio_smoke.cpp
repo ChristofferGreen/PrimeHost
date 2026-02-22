@@ -346,4 +346,50 @@ PH_TEST("primehost.audio", "close without stream") {
   PH_CHECK(status.has_value());
 }
 
+PH_TEST("primehost.audio", "active config after close") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto defaultDevice = audio->defaultOutputDevice();
+  if (!defaultDevice) {
+    PH_CHECK(defaultDevice.error().code == HostErrorCode::DeviceUnavailable);
+    return;
+  }
+
+  AudioStreamConfig config{};
+  config.format.sampleRate = 48000;
+  config.format.channels = 2;
+  config.format.format = SampleFormat::Float32;
+  config.format.interleaved = true;
+  config.bufferFrames = 256;
+  config.periodFrames = 128;
+
+  auto callback = [](std::span<float> interleaved, const AudioCallbackContext&, void*) {
+    for (float& sample : interleaved) {
+      sample = 0.0f;
+    }
+  };
+
+  auto openStatus = audio->openStream(defaultDevice.value(), config, callback, nullptr);
+  if (!openStatus.has_value()) {
+    bool allowed = openStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || openStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto closeStatus = audio->closeStream();
+  PH_CHECK(closeStatus.has_value());
+
+  auto active = audio->activeConfig();
+  PH_CHECK(!active.has_value());
+  if (!active.has_value()) {
+    PH_CHECK(active.error().code == HostErrorCode::InvalidConfig);
+  }
+}
+
 TEST_SUITE_END();
