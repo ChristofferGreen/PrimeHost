@@ -41,4 +41,25 @@ PH_TEST("primehost.clipboard_paths", "buffer too small") {
   }
 }
 
+PH_TEST("primehost.clipboard_paths", "buffer too small for paths") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::array<TextSpan, 1> spans{};
+  std::array<char, 1> buffer{};
+  auto result = host->clipboardPaths(spans, buffer);
+  if (result.has_value()) {
+    PH_CHECK(!result->available);
+    PH_CHECK(result->paths.size() == 0u);
+  } else {
+    bool allowed = result.error().code == HostErrorCode::BufferTooSmall;
+    allowed = allowed || result.error().code == HostErrorCode::Unsupported;
+    PH_CHECK(allowed);
+  }
+}
+
 TEST_SUITE_END();
