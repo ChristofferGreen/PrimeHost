@@ -12,6 +12,13 @@ inline float tiltNormalizedToDegrees(float normalized) {
   return std::clamp(normalized, -1.0f, 1.0f) * 90.0f;
 }
 
+inline std::optional<float> normalizedTiltDegrees(float normalized) {
+  if (!std::isfinite(normalized)) {
+    return std::nullopt;
+  }
+  return tiltNormalizedToDegrees(normalized);
+}
+
 inline float normalizeTwistDegrees(float degrees) {
   if (!std::isfinite(degrees)) {
     return 0.0f;

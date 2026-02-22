@@ -16,6 +16,12 @@ PH_TEST("primehost.input.util", "tilt normalized to degrees") {
   PH_CHECK(tiltNormalizedToDegrees(-2.0f) == -90.0f);
 }
 
+PH_TEST("primehost.input.util", "normalized tilt degrees") {
+  PH_CHECK(normalizedTiltDegrees(0.0f).value() == 0.0f);
+  PH_CHECK(normalizedTiltDegrees(2.0f).value() == 90.0f);
+  PH_CHECK(!normalizedTiltDegrees(std::numeric_limits<float>::quiet_NaN()).has_value());
+}
+
 PH_TEST("primehost.input.util", "normalize twist degrees") {
   PH_CHECK(normalizeTwistDegrees(0.0f) == 0.0f);
   PH_CHECK(normalizeTwistDegrees(90.0f) == 90.0f);
