@@ -3605,7 +3605,7 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
     NSPoint tilt = event.tilt;
     pointer.tiltX = tiltNormalizedToDegrees(static_cast<float>(tilt.x));
     pointer.tiltY = tiltNormalizedToDegrees(static_cast<float>(tilt.y));
-    pointer.twist = static_cast<float>(event.rotation);
+    pointer.twist = normalizeTwistDegrees(static_cast<float>(event.rotation));
   }
   if (phase == PrimeHost::PointerPhase::Move) {
     pointer.deltaX = static_cast<int32_t>(std::lround(event.deltaX));
