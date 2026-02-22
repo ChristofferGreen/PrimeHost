@@ -681,6 +681,7 @@ public:
   void handleModifiers(NSEvent* event);
   void handleText(uint64_t surfaceId, NSString* text);
   void handleFocus(uint64_t surfaceId, bool focused);
+  void handleScreenChange(uint64_t surfaceId);
   void handleWindowClosed(uint64_t surfaceId);
   void handleDisplayLinkTick();
   void handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link);
@@ -823,6 +824,19 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
 - (void)windowDidResignKey:(NSNotification*)notification {
   if (self.host) {
     self.host->handleFocus(self.surfaceId, false);
+  }
+}
+
+- (void)windowDidChangeScreen:(NSNotification*)notification {
+  if (self.host) {
+    self.host->handleScreenChange(self.surfaceId);
+    self.host->handleResize(self.surfaceId);
+  }
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification {
+  if (self.host) {
+    self.host->handleResize(self.surfaceId);
   }
 }
 
@@ -3843,6 +3857,28 @@ void HostMac::handleFocus(uint64_t surfaceId, bool focused) {
   event.time = std::chrono::steady_clock::now();
   event.payload = focus;
   enqueueEvent(std::move(event));
+  requestFrameForSurface(surface);
+}
+
+void HostMac::handleScreenChange(uint64_t surfaceId) {
+  auto* surface = findSurface(surfaceId);
+  if (!surface || surface->headless) {
+    return;
+  }
+  if (!surface->window) {
+    return;
+  }
+  NSScreen* screen = surface->window.screen;
+  if (!screen) {
+    surface->displayInterval.reset();
+    return;
+  }
+  NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+  if (!screenNumber) {
+    surface->displayInterval.reset();
+    return;
+  }
+  surface->displayInterval = display_interval_for_display(screenNumber.unsignedIntValue);
   requestFrameForSurface(surface);
 }
 
