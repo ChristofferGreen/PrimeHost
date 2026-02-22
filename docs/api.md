@@ -146,6 +146,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 
 ## Default Helpers
 - `resolveAudioStreamConfig(const AudioStreamConfig&)` (see `PrimeHost/AudioConfigDefaults.h`).
+- `resolveFrameConfig(const FrameConfig&, const SurfaceCapabilities&)` (see `PrimeHost/FrameConfigDefaults.h`).
 
 ### Error Handling (Example)
 ```cpp

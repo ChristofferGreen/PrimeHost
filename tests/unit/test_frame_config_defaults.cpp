@@ -1,4 +1,4 @@
-#include "FrameConfigDefaults.h"
+#include "PrimeHost/FrameConfigDefaults.h"
 
 #include "tests/unit/test_helpers.h"
 

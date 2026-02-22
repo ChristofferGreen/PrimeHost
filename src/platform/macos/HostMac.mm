@@ -19,7 +19,7 @@
 #include "DeviceNameMatch.h"
 #include "PrimeHost/FrameConfigValidation.h"
 #include "FrameConfigUtil.h"
-#include "FrameConfigDefaults.h"
+#include "PrimeHost/FrameConfigDefaults.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
