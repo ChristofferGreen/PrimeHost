@@ -334,4 +334,16 @@ PH_TEST("primehost.audio", "too many channels") {
   }
 }
 
+PH_TEST("primehost.audio", "close without stream") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto status = audio->closeStream();
+  PH_CHECK(status.has_value());
+}
+
 TEST_SUITE_END();
