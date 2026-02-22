@@ -33,6 +33,9 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Optional min/max size constraints.
 - Defaults: no constraints; size/position are controlled by the OS until explicitly set.
 - Implemented: `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition` (size/position only).
+## DPI / Scale (Draft)
+- Query per-surface backing scale factor for high-DPI rendering.
+- Implemented: `surfaceScale`.
 
 ## Window State (Draft)
 - Minimize/maximize/fullscreen controls per surface.
@@ -145,7 +148,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
-- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`
+- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`, `surfaceScale`
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 

@@ -347,6 +347,7 @@ public:
   HostResult<size_t> clipboardTextSize() const override;
   HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
   HostStatus setClipboardText(Utf8TextView text) override;
+  HostResult<float> surfaceScale(SurfaceId surfaceId) const override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1297,6 +1298,14 @@ HostStatus HostMac::setClipboardText(Utf8TextView text) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
   return {};
+}
+
+HostResult<float> HostMac::surfaceScale(SurfaceId surfaceId) const {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  return static_cast<float>(surface->window.backingScaleFactor);
 }
 
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
