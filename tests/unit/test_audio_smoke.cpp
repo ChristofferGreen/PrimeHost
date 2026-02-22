@@ -135,4 +135,33 @@ PH_TEST("primehost.audio", "invalid device open") {
   }
 }
 
+PH_TEST("primehost.audio", "invalid callback") {
+  auto result = createAudioHost();
+  if (!result) {
+    PH_CHECK(result.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto audio = std::move(result.value());
+
+  auto defaultDevice = audio->defaultOutputDevice();
+  if (!defaultDevice) {
+    PH_CHECK(defaultDevice.error().code == HostErrorCode::DeviceUnavailable);
+    return;
+  }
+
+  AudioStreamConfig config{};
+  config.format.sampleRate = 48000;
+  config.format.channels = 2;
+  config.format.format = SampleFormat::Float32;
+  config.format.interleaved = true;
+  config.bufferFrames = 256;
+  config.periodFrames = 128;
+
+  auto status = audio->openStream(defaultDevice.value(), config, nullptr, nullptr);
+  PH_CHECK(!status.has_value());
+  if (!status.has_value()) {
+    PH_CHECK(status.error().code == HostErrorCode::InvalidConfig);
+  }
+}
+
 TEST_SUITE_END();
