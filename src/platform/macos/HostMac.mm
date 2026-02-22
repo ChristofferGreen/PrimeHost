@@ -334,6 +334,7 @@ public:
   HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) override;
   HostResult<FrameConfig> frameConfig(SurfaceId surfaceId) const override;
   HostResult<std::optional<std::chrono::nanoseconds>> displayInterval(SurfaceId surfaceId) const override;
+  HostStatus setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1124,6 +1125,21 @@ HostResult<std::optional<std::chrono::nanoseconds>> HostMac::displayInterval(Sur
     return surface->displayInterval;
   }
   return displayInterval_;
+}
+
+HostStatus HostMac::setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  NSString* nsTitle = [[NSString alloc] initWithBytes:title.data()
+                                               length:title.size()
+                                             encoding:NSUTF8StringEncoding];
+  if (!nsTitle) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  surface->window.title = nsTitle;
+  return {};
 }
 
 HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {

@@ -286,6 +286,7 @@ public:
   virtual HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) = 0;
   virtual HostResult<FrameConfig> frameConfig(SurfaceId surfaceId) const = 0;
   virtual HostResult<std::optional<std::chrono::nanoseconds>> displayInterval(SurfaceId surfaceId) const = 0;
+  virtual HostStatus setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,

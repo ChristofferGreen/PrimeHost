@@ -136,7 +136,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
-- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`
+- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 
@@ -167,7 +167,7 @@ for (const auto& evt : batch->events) {
 ```
 - Native file dialogs (draft).
 - Haptics for supported devices (draft).
-- Window icon and title updates (draft).
+- Window icon updates (draft).
 - Offscreen/headless surfaces (draft).
 - Clipboard read/write and IME composition events (draft).
 - Cursor visibility/confine/relative pointer mode (draft).
