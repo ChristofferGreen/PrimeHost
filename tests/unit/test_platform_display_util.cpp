@@ -1,0 +1,25 @@
+#include "src/PlatformDisplayUtil.h"
+
+#include "tests/unit/test_helpers.h"
+
+using namespace PrimeHost;
+
+TEST_SUITE_BEGIN("primehost.display.util");
+
+PH_TEST("primehost.display.util", "interval from refresh rate") {
+  auto interval60 = intervalFromRefreshRate(60.0);
+  PH_REQUIRE(interval60.has_value());
+  PH_CHECK(interval60->count() == 16666666);
+
+  auto interval120 = intervalFromRefreshRate(120.0);
+  PH_REQUIRE(interval120.has_value());
+  PH_CHECK(interval120->count() == 8333333);
+
+  auto intervalZero = intervalFromRefreshRate(0.0);
+  PH_CHECK(!intervalZero.has_value());
+
+  auto intervalNegative = intervalFromRefreshRate(-60.0);
+  PH_CHECK(!intervalNegative.has_value());
+}
+
+TEST_SUITE_END();

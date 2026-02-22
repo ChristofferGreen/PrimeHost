@@ -29,6 +29,7 @@
 #include "PrimeHost/FrameConfigUtil.h"
 #include "PrimeHost/FrameConfigDefaults.h"
 #include "PlatformInputUtil.h"
+#include "PlatformDisplayUtil.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
@@ -120,6 +121,16 @@ WindowImageFn window_image_fn() {
   static WindowImageFn fn =
       reinterpret_cast<WindowImageFn>(dlsym(RTLD_DEFAULT, "CGWindowListCreateImage"));
   return fn;
+}
+
+std::optional<std::chrono::nanoseconds> display_interval_for_display(CGDirectDisplayID displayId) {
+  CGDisplayModeRef mode = CGDisplayCopyDisplayMode(displayId);
+  if (!mode) {
+    return std::nullopt;
+  }
+  double refreshRate = CGDisplayModeGetRefreshRate(mode);
+  CGDisplayModeRelease(mode);
+  return intervalFromRefreshRate(refreshRate);
 }
 
 char ascii_lower(char value) {
@@ -1609,6 +1620,7 @@ HostStatus HostMac::setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) {
       return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
     }
     surface->headlessDisplayId = displayId;
+    surface->displayInterval = display_interval_for_display(displayId);
     return {};
   }
   if (!surface->window) {
@@ -1630,6 +1642,7 @@ HostStatus HostMac::setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) {
   frame.origin.x = visible.origin.x + (visible.size.width - frame.size.width) * 0.5;
   frame.origin.y = visible.origin.y + (visible.size.height - frame.size.height) * 0.5;
   [surface->window setFrame:frame display:YES];
+  surface->displayInterval = display_interval_for_display(displayId);
   return {};
 }
 
@@ -1656,6 +1669,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
     state->headless = true;
     state->headlessSize = SurfaceSize{config.width, config.height};
     state->headlessDisplayId = static_cast<uint32_t>(CGMainDisplayID());
+    state->displayInterval = display_interval_for_display(state->headlessDisplayId);
     surfaces_.emplace(surfaceId.value, std::move(state));
 
     Event created{};
@@ -1739,6 +1753,12 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   }
   state->delegate = delegate;
   state->lastFrameTime.reset();
+  if (window.screen) {
+    NSNumber* screenNumber = window.screen.deviceDescription[@"NSScreenNumber"];
+    if (screenNumber) {
+      state->displayInterval = display_interval_for_display(screenNumber.unsignedIntValue);
+    }
+  }
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
   if (@available(macOS 14.0, *)) {
     CADisplayLink* link = [view displayLinkWithTarget:view selector:@selector(displayLinkTick:)];
