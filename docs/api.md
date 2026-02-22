@@ -53,7 +53,20 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Cursor (Draft)
 - Standard cursor shapes plus custom cursor image support.
 - Defaults: system arrow cursor; cursor visible unless explicitly hidden.
-- Implemented: `setCursorVisible`, `setCursorShape` (macOS).
+- Implemented: `setCursorVisible`, `setCursorShape`, `setCursorImage` (macOS).
+
+Example (custom cursor):
+```cpp
+std::array<uint8_t, 16 * 16 * 4> rgba{};
+// Fill rgba with 8-bit RGBA pixels.
+PrimeHost::CursorImage cursor{};
+cursor.width = 16;
+cursor.height = 16;
+cursor.hotX = 0;
+cursor.hotY = 0;
+cursor.pixels = rgba;
+host->setCursorImage(surfaceId, cursor);
+```
 
 ## Safe-Area Insets (Draft)
 - Per-surface safe-area insets for notches/rounded corners.

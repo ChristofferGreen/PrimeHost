@@ -78,6 +78,7 @@ struct SurfaceState {
   id commandQueue = nil;
   FrameConfig frameConfig{};
   CursorShape cursorShape = CursorShape::Arrow;
+  NSCursor* customCursor = nullptr;
   uint64_t frameIndex = 0u;
   std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
   std::optional<std::chrono::nanoseconds> displayInterval{};
@@ -578,6 +579,7 @@ public:
   HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) override;
   HostResult<SafeAreaInsets> surfaceSafeAreaInsets(SurfaceId surfaceId) const override;
   HostStatus setCursorShape(SurfaceId surfaceId, CursorShape shape) override;
+  HostStatus setCursorImage(SurfaceId surfaceId, const CursorImage& image) override;
   HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) override;
   HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
   HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
@@ -1811,6 +1813,9 @@ HostStatus HostMac::setCursorShape(SurfaceId surfaceId, CursorShape shape) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   surface->cursorShape = shape;
+  if (surface->customCursor) {
+    surface->customCursor = nil;
+  }
   if (surface->window) {
     [surface->window invalidateCursorRectsForView:surface->view];
     if (surface->window.isKeyWindow) {
@@ -1818,6 +1823,54 @@ HostStatus HostMac::setCursorShape(SurfaceId surfaceId, CursorShape shape) {
       if (cursor) {
         [cursor set];
       }
+    }
+  }
+  return {};
+}
+
+HostStatus HostMac::setCursorImage(SurfaceId surfaceId, const CursorImage& image) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->view) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (image.width == 0u || image.height == 0u || image.pixels.empty()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  size_t pixelCount = static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u;
+  if (image.pixels.size() < pixelCount) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+
+  NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+      initWithBitmapDataPlanes:nullptr
+                    pixelsWide:static_cast<NSInteger>(image.width)
+                    pixelsHigh:static_cast<NSInteger>(image.height)
+                 bitsPerSample:8
+               samplesPerPixel:4
+                      hasAlpha:YES
+                      isPlanar:NO
+                colorSpaceName:NSDeviceRGBColorSpace
+                   bytesPerRow:static_cast<NSInteger>(image.width) * 4
+                  bitsPerPixel:32];
+  if (!rep) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  std::memcpy(rep.bitmapData, image.pixels.data(), pixelCount);
+  NSImage* nsImage = [[NSImage alloc] initWithSize:NSMakeSize(image.width, image.height)];
+  if (!nsImage) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  [nsImage addRepresentation:rep];
+  NSCursor* cursor =
+      [[NSCursor alloc] initWithImage:nsImage hotSpot:NSMakePoint(image.hotX, image.hotY)];
+  if (!cursor) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  surface->customCursor = cursor;
+  if (surface->window) {
+    [surface->window invalidateCursorRectsForView:surface->view];
+    if (surface->window.isKeyWindow) {
+      [cursor set];
     }
   }
   return {};
@@ -3523,7 +3576,7 @@ void HostMac::updateCursorRects(uint64_t surfaceId, NSView* view) {
   if (!surface || !view) {
     return;
   }
-  NSCursor* cursor = cursorForShape(surface->cursorShape);
+  NSCursor* cursor = surface->customCursor ? surface->customCursor : cursorForShape(surface->cursorShape);
   if (!cursor) {
     cursor = [NSCursor arrowCursor];
   }

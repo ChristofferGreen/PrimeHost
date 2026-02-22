@@ -256,6 +256,14 @@ struct SafeAreaInsets {
   float bottom = 0.0f;
 };
 
+struct CursorImage {
+  uint32_t width = 0u;
+  uint32_t height = 0u;
+  int32_t hotX = 0;
+  int32_t hotY = 0;
+  std::span<const uint8_t> pixels;
+};
+
 struct FileDialogConfig {
   FileDialogMode mode = FileDialogMode::OpenFile;
   std::optional<Utf8TextView> title;
@@ -547,6 +555,7 @@ public:
   virtual HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) = 0;
   virtual HostResult<SafeAreaInsets> surfaceSafeAreaInsets(SurfaceId surfaceId) const = 0;
   virtual HostStatus setCursorShape(SurfaceId surfaceId, CursorShape shape) = 0;
+  virtual HostStatus setCursorImage(SurfaceId surfaceId, const CursorImage& image) = 0;
   virtual HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) = 0;
   virtual HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) = 0;
   virtual HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) = 0;

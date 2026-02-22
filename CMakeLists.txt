@@ -115,6 +115,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_safe_area.cpp
     tests/unit/test_cursor_visible.cpp
     tests/unit/test_cursor_shape.cpp
+    tests/unit/test_cursor_image.cpp
     tests/unit/test_surface_state.cpp
     tests/unit/test_clipboard.cpp
     tests/unit/test_clipboard_size.cpp
