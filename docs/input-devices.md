@@ -20,24 +20,25 @@ auto-map platform-specific button/axis indices into PrimeHost control IDs.
 - Logitech F310/F710 when in XInput mode (maps like Xbox).
 - 8BitDo controllers when set to XInput mode (maps like Xbox).
 
-### VID/PID Table (Placeholder)
-Fill these once we finalize the initial database and verify platform IDs.
+### VID/PID Table (Initial)
+These are common USB VID/PID pairs for the seed list. Some controllers expose multiple IDs (USB
+vs. Bluetooth) so the list is not exhaustive.
 
 | Vendor | Model | VID | PID | Layout | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Microsoft | Xbox 360 Controller | TBD | TBD | XInput | Multiple variants exist. |
-| Microsoft | Xbox One Controller | TBD | TBD | XInput | Multiple variants exist. |
-| Microsoft | Xbox Series Controller | TBD | TBD | XInput | Multiple variants exist. |
-| Sony | DualShock 4 | TBD | TBD | DS4 | USB/Bluetooth IDs differ. |
-| Sony | DualSense | TBD | TBD | DualSense | USB/Bluetooth IDs differ. |
-| Nintendo | Switch Pro Controller | TBD | TBD | Nintendo | USB/Bluetooth IDs differ. |
-| Logitech | F310/F710 (XInput) | TBD | TBD | XInput | Requires XInput mode. |
-| 8BitDo | XInput Mode | TBD | TBD | XInput | Varies by model. |
+| Microsoft | Xbox 360 Controller | 0x045E | 0x028E | XInput | USB. Multiple variants exist. |
+| Microsoft | Xbox One Controller | 0x045E | 0x02D1, 0x02DD, 0x02E0, 0x02EA | XInput | Common USB variants. |
+| Microsoft | Xbox Series Controller | 0x045E | 0x0B12 | XInput | USB. |
+| Sony | DualShock 4 | 0x054C | 0x05C4, 0x09CC | DS4 | USB variants. Bluetooth IDs differ. |
+| Sony | DualSense | 0x054C | 0x0CE6 | DualSense | USB. Bluetooth IDs differ. |
+| Nintendo | Switch Pro Controller | 0x057E | 0x2009 | Nintendo | USB. Bluetooth IDs differ. |
+| Logitech | F310/F710 (XInput) | 0x046D | 0xC21D (F310), 0xC21F (F710) | XInput | Requires XInput mode. |
+| 8BitDo | SF30 Pro (XInput) | 0x2DC8 | 0x6000 | XInput | Example model; other 8BitDo PIDs exist. |
 
 ### macOS Matching (Current)
 On macOS, PrimeHost uses `GCController` and performs a case-insensitive name match to seed initial
-capabilities for common controllers. This avoids hardcoding VID/PID pairs until the HID layer is
-fully wired up. The current matching tokens are:
+capabilities for common controllers. When VID/PID values are available via HID, PrimeHost will
+prefer those entries. The current matching tokens are:
 - `xbox`
 - `dualshock`
 - `dualsense`
