@@ -3486,6 +3486,12 @@ void HostMac::handleResize(uint64_t surfaceId) {
     event.time = std::chrono::steady_clock::now();
     event.payload = resize;
     enqueueEvent(std::move(event));
+
+    if (callbacks_.onFrame && surface->frameConfig.framePolicy != FramePolicy::Continuous) {
+      bool bypassCap = surface->frameConfig.framePolicy == FramePolicy::Capped &&
+                       surface->frameConfig.framePacingSource == FramePacingSource::HostLimiter;
+      requestFrame(surface->surfaceId, bypassCap);
+    }
   }
 }
 
