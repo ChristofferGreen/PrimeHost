@@ -298,6 +298,37 @@ PH_TEST("primehost.clipboard_image", "read back 2x2 image") {
   }
 }
 
+PH_TEST("primehost.clipboard_image", "set text after image") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::array<uint8_t, 4> pixels = {255, 255, 0, 255};
+  ImageData image{};
+  image.size = ImageSize{1u, 1u};
+  image.pixels = pixels;
+
+  auto setImage = host->setClipboardImage(image);
+  if (!setImage.has_value()) {
+    bool allowed = setImage.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setImage.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto setText = host->setClipboardText("PrimeHost");
+  if (!setText.has_value()) {
+    bool allowed = setText.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setText.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+  } else {
+    PH_CHECK(setText.has_value());
+  }
+}
+
 PH_TEST("primehost.clipboard_image", "no image after text") {
   auto hostResult = createHost();
   if (!hostResult) {
