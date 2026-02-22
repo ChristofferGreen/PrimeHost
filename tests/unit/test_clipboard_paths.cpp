@@ -164,4 +164,33 @@ PH_TEST("primehost.clipboard_paths", "available false for text") {
   PH_CHECK(result->paths.size() == 0u);
 }
 
+PH_TEST("primehost.clipboard_paths", "empty read after text") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto setText = host->setClipboardText("PrimeHost");
+  if (!setText.has_value()) {
+    bool allowed = setText.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setText.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  std::array<TextSpan, 1> spans{};
+  std::array<char, 1> buffer{};
+  auto result = host->clipboardPaths(spans, buffer);
+  if (result.has_value()) {
+    PH_CHECK(!result->available);
+    PH_CHECK(result->paths.size() == 0u);
+  } else {
+    bool allowed = result.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || result.error().code == HostErrorCode::BufferTooSmall;
+    PH_CHECK(allowed);
+  }
+}
+
 TEST_SUITE_END();
