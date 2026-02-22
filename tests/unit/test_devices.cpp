@@ -37,4 +37,25 @@ PH_TEST("primehost.devices", "count query") {
   }
 }
 
+PH_TEST("primehost.devices", "invalid device queries") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto info = host->deviceInfo(99999u);
+  PH_CHECK(!info.has_value());
+  if (!info.has_value()) {
+    PH_CHECK(info.error().code == HostErrorCode::InvalidDevice);
+  }
+
+  auto caps = host->deviceCapabilities(99999u);
+  PH_CHECK(!caps.has_value());
+  if (!caps.has_value()) {
+    PH_CHECK(caps.error().code == HostErrorCode::InvalidDevice);
+  }
+}
+
 TEST_SUITE_END();
