@@ -241,6 +241,15 @@ inline FileDialogConfig directoryDialogConfig(Utf8TextView defaultPath = {}) {
   return config;
 }
 
+inline FileDialogConfig openFileDialogConfig(Utf8TextView defaultPath = {}) {
+  FileDialogConfig config{};
+  config.mode = FileDialogMode::OpenFile;
+  if (!defaultPath.empty()) {
+    config.defaultPath = defaultPath;
+  }
+  return config;
+}
+
 struct FileDialogResult {
   bool accepted = false;
   Utf8TextView path;
