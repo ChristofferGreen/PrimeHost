@@ -155,6 +155,18 @@ PH_TEST("primehost.surface", "surface size round-trip") {
   if (!maxSizeAfter.has_value()) {
     PH_CHECK(maxSizeAfter.error().code == HostErrorCode::InvalidSurface);
   }
+
+  std::array<uint8_t, 4> iconPixels{0u, 0u, 0u, 255u};
+  IconImage iconImage{};
+  iconImage.size = ImageSize{1u, 1u};
+  iconImage.pixels = iconPixels;
+  WindowIcon icon{};
+  icon.images = std::span<const IconImage>(&iconImage, 1);
+  auto iconAfter = host->setSurfaceIcon(surface.value(), icon);
+  PH_CHECK(!iconAfter.has_value());
+  if (!iconAfter.has_value()) {
+    PH_CHECK(iconAfter.error().code == HostErrorCode::InvalidSurface);
+  }
 }
 
 TEST_SUITE_END();
