@@ -582,6 +582,7 @@ public:
   HostStatus setCursorShape(SurfaceId surfaceId, CursorShape shape) override;
   HostStatus setCursorImage(SurfaceId surfaceId, const CursorImage& image) override;
   HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) override;
+  HostStatus setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) override;
   HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
   HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
   HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) override;
@@ -1890,6 +1891,55 @@ HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
   } else {
     [NSCursor hide];
   }
+  return {};
+}
+
+HostStatus HostMac::setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (icon.images.empty()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  NSImage* nsImage = [[NSImage alloc] init];
+  if (!nsImage) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  for (const auto& image : icon.images) {
+    if (image.size.width == 0u || image.size.height == 0u || image.pixels.empty()) {
+      continue;
+    }
+    size_t width = static_cast<size_t>(image.size.width);
+    size_t height = static_cast<size_t>(image.size.height);
+    if (width > (std::numeric_limits<size_t>::max() / height) / 4u) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    size_t pixelCount = width * height * 4u;
+    if (image.pixels.size() < pixelCount) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:nullptr
+                      pixelsWide:static_cast<NSInteger>(width)
+                      pixelsHigh:static_cast<NSInteger>(height)
+                   bitsPerSample:8
+                 samplesPerPixel:4
+                        hasAlpha:YES
+                        isPlanar:NO
+                  colorSpaceName:NSDeviceRGBColorSpace
+                     bytesPerRow:static_cast<NSInteger>(width) * 4
+                    bitsPerPixel:32];
+    if (!rep) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    std::memcpy(rep.bitmapData, image.pixels.data(), pixelCount);
+    [nsImage addRepresentation:rep];
+  }
+  if (nsImage.representations.count == 0) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  [app_ setApplicationIconImage:nsImage];
   return {};
 }
 

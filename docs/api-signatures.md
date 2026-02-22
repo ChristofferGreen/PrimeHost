@@ -205,6 +205,15 @@ struct ImageData {
   std::span<const uint8_t> pixels;
 };
 
+struct IconImage {
+  ImageSize size;
+  std::span<const uint8_t> pixels;
+};
+
+struct WindowIcon {
+  std::span<const IconImage> images;
+};
+
 struct FileDialogConfig {
   FileDialogMode mode = FileDialogMode::OpenFile;
   std::optional<Utf8TextView> title;
@@ -481,6 +490,7 @@ public:
   virtual HostStatus setCursorShape(SurfaceId surfaceId, CursorShape shape) = 0;
   virtual HostStatus setCursorImage(SurfaceId surfaceId, const CursorImage& image) = 0;
   virtual HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) = 0;
+  virtual HostStatus setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) = 0;
   virtual HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) = 0;
   virtual HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) = 0;
   virtual HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) = 0;

@@ -68,6 +68,21 @@ cursor.pixels = rgba;
 host->setCursorImage(surfaceId, cursor);
 ```
 
+## Window Icon (Draft)
+- Provide one or more RGBA8 icon images for the surface/app.
+- Implemented: `setSurfaceIcon` (macOS, sets app/dock icon).
+
+Example:
+```cpp
+std::array<uint8_t, 4 * 4 * 4> rgba{};
+PrimeHost::IconImage iconImage{};
+iconImage.size = PrimeHost::ImageSize{4, 4};
+iconImage.pixels = rgba;
+PrimeHost::WindowIcon icon{};
+icon.images = std::span<const PrimeHost::IconImage>(&iconImage, 1);
+host->setSurfaceIcon(surfaceId, icon);
+```
+
 ## Safe-Area Insets (Draft)
 - Per-surface safe-area insets for notches/rounded corners.
 - Default insets: all zeros when not applicable.
@@ -338,26 +353,26 @@ for (const auto& evt : batch->events) {
   // ...
 }
 ```
-- Haptics for supported devices (draft).
-- Window icon updates (draft).
+- Haptics for supported devices (implemented for gamepad rumble on macOS).
+- Window icon updates (implemented on macOS).
 - Offscreen/headless surfaces (draft).
-- Clipboard read/write and IME composition events (draft).
-- Cursor visibility/confine/relative pointer mode (draft).
-- Window state controls and DPI/scale queries (draft).
+- Clipboard read/write (implemented), IME composition events (draft).
+- Cursor visibility + relative pointer mode (implemented), confine (draft).
+- Window state controls and DPI/scale queries (implemented).
 - Timing utilities for sleep/pacing (draft).
 - Host-level logging callback/hook (draft).
-- Window geometry APIs (draft).
-- Custom cursor images (draft).
-- Safe-area insets (draft).
-- HDR/EDR reporting (draft).
-- Power/thermal events (draft).
-- Pointer lock/capture (draft).
-- Clipboard formats beyond text (draft).
-- App path discovery (draft).
-- Permissions API (draft).
-- Idle sleep/screen saver inhibition (draft).
-- Controller LEDs/lightbar (draft).
-- Localization/IME language info (draft).
+- Window geometry APIs (implemented).
+- Custom cursor images (implemented on macOS).
+- Safe-area insets (implemented on macOS).
+- HDR/EDR reporting (implemented on macOS).
+- Power/thermal events (implemented on macOS).
+- Pointer lock/capture (implemented on macOS).
+- Clipboard formats beyond text (implemented on macOS).
+- App path discovery (implemented on macOS).
+- Permissions API (implemented on macOS).
+- Idle sleep/screen saver inhibition (implemented on macOS).
+- Controller LEDs/lightbar (implemented on macOS).
+- Localization/IME language info (implemented on macOS).
 - Background task hooks (draft).
 - System tray/menu-bar integration (draft).
 - IME composition caret/selection placement (draft).
