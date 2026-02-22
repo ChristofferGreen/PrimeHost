@@ -2,6 +2,8 @@
 
 #include "tests/unit/test_helpers.h"
 
+#include <array>
+
 using namespace PrimeHost;
 
 TEST_SUITE_BEGIN("primehost.headless");
@@ -65,6 +67,31 @@ PH_TEST("primehost.headless", "create and size") {
   PH_CHECK(minSize.has_value());
   auto maxSize = host->setSurfaceMaxSize(surface.value(), 1024u, 768u);
   PH_CHECK(maxSize.has_value());
+
+  auto cursorShape = host->setCursorShape(surface.value(), CursorShape::Hand);
+  PH_CHECK(cursorShape.has_value());
+
+  std::array<uint8_t, 4> cursorPixels{255u, 0u, 0u, 255u};
+  CursorImage cursor{};
+  cursor.width = 1u;
+  cursor.height = 1u;
+  cursor.hotX = 0;
+  cursor.hotY = 0;
+  cursor.pixels = cursorPixels;
+  auto cursorImage = host->setCursorImage(surface.value(), cursor);
+  PH_CHECK(cursorImage.has_value());
+
+  auto cursorVisible = host->setCursorVisible(surface.value(), false);
+  PH_CHECK(cursorVisible.has_value());
+
+  std::array<uint8_t, 4> iconPixels{0u, 255u, 0u, 255u};
+  IconImage iconImage{};
+  iconImage.size = ImageSize{1u, 1u};
+  iconImage.pixels = iconPixels;
+  WindowIcon icon{};
+  icon.images = std::span<const IconImage>(&iconImage, 1);
+  auto iconStatus = host->setSurfaceIcon(surface.value(), icon);
+  PH_CHECK(iconStatus.has_value());
 
   auto status = host->setSurfaceSize(surface.value(), 128u, 256u);
   PH_CHECK(status.has_value());

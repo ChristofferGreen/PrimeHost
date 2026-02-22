@@ -1889,7 +1889,13 @@ HostResult<SafeAreaInsets> HostMac::surfaceSafeAreaInsets(SurfaceId surfaceId) c
 
 HostStatus HostMac::setCursorShape(SurfaceId surfaceId, CursorShape shape) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->view) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->view) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   surface->cursorShape = shape;
@@ -1910,7 +1916,13 @@ HostStatus HostMac::setCursorShape(SurfaceId surfaceId, CursorShape shape) {
 
 HostStatus HostMac::setCursorImage(SurfaceId surfaceId, const CursorImage& image) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->view) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->view) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (image.width == 0u || image.height == 0u || image.pixels.empty()) {
@@ -1958,7 +1970,13 @@ HostStatus HostMac::setCursorImage(SurfaceId surfaceId, const CursorImage& image
 
 HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (visible) {
@@ -1971,7 +1989,7 @@ HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
 
 HostStatus HostMac::setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (icon.images.empty()) {
