@@ -93,6 +93,11 @@ PH_TEST("primehost.headless", "create and size") {
   auto iconStatus = host->setSurfaceIcon(surface.value(), icon);
   PH_CHECK(iconStatus.has_value());
 
+  auto relativeOn = host->setRelativePointerCapture(surface.value(), true);
+  PH_CHECK(relativeOn.has_value());
+  auto relativeOff = host->setRelativePointerCapture(surface.value(), false);
+  PH_CHECK(relativeOff.has_value());
+
   auto status = host->setSurfaceSize(surface.value(), 128u, 256u);
   PH_CHECK(status.has_value());
   if (status) {

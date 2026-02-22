@@ -3195,7 +3195,13 @@ HostStatus HostMac::removeTrayItem(uint64_t trayId) {
 
 HostStatus HostMac::setRelativePointerCapture(SurfaceId surfaceId, bool enabled) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
 
