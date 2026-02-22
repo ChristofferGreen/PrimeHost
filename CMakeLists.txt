@@ -147,6 +147,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_frame_config_util.cpp
     tests/unit/test_frame_diagnostics.cpp
     tests/unit/test_frame_limiter.cpp
+    tests/unit/test_host_limiter_timer.cpp
     tests/unit/test_gamepad_profiles.cpp
     tests/unit/test_gamepad_ids.cpp
     tests/unit/test_request_frame.cpp

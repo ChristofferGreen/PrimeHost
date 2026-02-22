@@ -668,6 +668,7 @@ public:
   void handleWindowClosed(uint64_t surfaceId);
   void handleDisplayLinkTick();
   void handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link);
+  void handleHostLimiterTick();
   void handleGamepadConnected(GCController* controller);
   void handleGamepadDisconnected(GCController* controller);
   void enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value);
@@ -695,6 +696,7 @@ private:
   SurfaceState* findSurface(uint64_t surfaceId);
   const SurfaceState* findSurface(uint64_t surfaceId) const;
   void updateDisplayLinkState();
+  void updateHostLimiterState();
 
   NSApplication* app_ = nullptr;
   std::unordered_map<uint64_t, std::unique_ptr<SurfaceState>> surfaces_;
@@ -724,6 +726,8 @@ private:
   uint64_t nextTrayId_ = 1u;
   CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
+  dispatch_source_t hostLimiterTimer_ = nil;
+  std::chrono::nanoseconds hostLimiterInterval_{0};
   bool relativePointerEnabled_ = false;
   std::optional<SurfaceId> relativePointerSurface_{};
   uint64_t nextIdleSleepToken_ = 1u;
@@ -1257,6 +1261,10 @@ HostMac::HostMac() {
 
 HostMac::~HostMac() {
   releaseRelativePointer();
+  if (hostLimiterTimer_) {
+    dispatch_source_cancel(hostLimiterTimer_);
+    hostLimiterTimer_ = nil;
+  }
   for (const auto& entry : idleSleepAssertions_) {
     if (entry.second != kIOPMNullAssertionID) {
       IOPMAssertionRelease(entry.second);
@@ -4114,7 +4122,9 @@ void HostMac::updateDisplayLinkState() {
     if (!entry.second) {
       continue;
     }
-    const bool wantsContinuous = entry.second->frameConfig.framePolicy == FramePolicy::Continuous;
+    const bool wantsContinuous =
+        entry.second->frameConfig.framePolicy == FramePolicy::Continuous &&
+        entry.second->frameConfig.framePacingSource == FramePacingSource::Platform;
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
     if (entry.second->viewDisplayLink) {
       entry.second->viewDisplayLink.paused = !wantsContinuous;
@@ -4137,11 +4147,15 @@ void HostMac::updateDisplayLinkState() {
     CVDisplayLinkStop(cvDisplayLink_);
   }
 #pragma clang diagnostic pop
+
+  updateHostLimiterState();
 }
 
 void HostMac::handleDisplayLinkTick() {
   for (auto& entry : surfaces_) {
-    if (entry.second && entry.second->frameConfig.framePolicy == FramePolicy::Continuous) {
+    if (entry.second &&
+        entry.second->frameConfig.framePolicy == FramePolicy::Continuous &&
+        entry.second->frameConfig.framePacingSource == FramePacingSource::Platform) {
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
       if (entry.second->viewDisplayLink) {
         continue;
@@ -4164,8 +4178,82 @@ void HostMac::handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link) {
           std::chrono::duration<double>(duration));
     }
   }
-  if (surface->frameConfig.framePolicy == FramePolicy::Continuous) {
+  if (surface->frameConfig.framePolicy == FramePolicy::Continuous &&
+      surface->frameConfig.framePacingSource == FramePacingSource::Platform) {
     requestFrame(surface->surfaceId, false);
+  }
+}
+
+void HostMac::handleHostLimiterTick() {
+  for (auto& entry : surfaces_) {
+    if (!entry.second) {
+      continue;
+    }
+    if (entry.second->frameConfig.framePolicy != FramePolicy::Continuous) {
+      continue;
+    }
+    if (entry.second->frameConfig.framePacingSource != FramePacingSource::HostLimiter) {
+      continue;
+    }
+    requestFrame(entry.second->surfaceId, false);
+  }
+}
+
+void HostMac::updateHostLimiterState() {
+  std::optional<std::chrono::nanoseconds> interval;
+  for (const auto& entry : surfaces_) {
+    const auto* surface = entry.second.get();
+    if (!surface) {
+      continue;
+    }
+    if (surface->frameConfig.framePolicy != FramePolicy::Continuous) {
+      continue;
+    }
+    if (surface->frameConfig.framePacingSource != FramePacingSource::HostLimiter) {
+      continue;
+    }
+    std::optional<std::chrono::nanoseconds> candidate = surface->frameConfig.frameInterval;
+    if (!candidate || candidate->count() <= 0) {
+      candidate = surface->displayInterval;
+    }
+    if ((!candidate || candidate->count() <= 0) && displayInterval_) {
+      candidate = displayInterval_;
+    }
+    if (!candidate || candidate->count() <= 0) {
+      candidate = std::chrono::nanoseconds(16'666'667);
+    }
+    if (!interval || candidate.value() < interval.value()) {
+      interval = candidate;
+    }
+  }
+
+  if (!interval) {
+    if (hostLimiterTimer_) {
+      dispatch_source_cancel(hostLimiterTimer_);
+      hostLimiterTimer_ = nil;
+    }
+    hostLimiterInterval_ = std::chrono::nanoseconds(0);
+    return;
+  }
+
+  const uint64_t nanos = static_cast<uint64_t>(std::max<int64_t>(interval->count(), 1));
+  if (!hostLimiterTimer_) {
+    hostLimiterTimer_ =
+        dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    HostMac* host = this;
+    dispatch_source_set_event_handler(hostLimiterTimer_, ^{
+      host->handleHostLimiterTick();
+    });
+    dispatch_resume(hostLimiterTimer_);
+  }
+
+  if (hostLimiterInterval_ != *interval) {
+    const uint64_t leeway = nanos / 10;
+    dispatch_source_set_timer(hostLimiterTimer_,
+                              dispatch_time(DISPATCH_TIME_NOW, 0),
+                              nanos,
+                              leeway);
+    hostLimiterInterval_ = *interval;
   }
 }
 
