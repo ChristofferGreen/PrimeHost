@@ -130,6 +130,11 @@ struct SurfaceSize {
   uint32_t height = 0u;
 };
 
+struct SurfacePoint {
+  int32_t x = 0;
+  int32_t y = 0;
+};
+
 enum class PointerPhase { Down, Move, Up, Cancel };
 enum class PointerDeviceType { Mouse, Touch, Pen };
 
@@ -294,6 +299,8 @@ public:
   virtual HostStatus setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) = 0;
   virtual HostResult<SurfaceSize> surfaceSize(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
+  virtual HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const = 0;
+  virtual HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,

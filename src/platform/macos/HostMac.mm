@@ -337,6 +337,8 @@ public:
   HostStatus setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) override;
   HostResult<SurfaceSize> surfaceSize(SurfaceId surfaceId) const override;
   HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
+  HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const override;
+  HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1166,6 +1168,30 @@ HostStatus HostMac::setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t
   }
   NSSize size = NSMakeSize(static_cast<CGFloat>(width), static_cast<CGFloat>(height));
   [surface->window setContentSize:size];
+  return {};
+}
+
+HostResult<SurfacePoint> HostMac::surfacePosition(SurfaceId surfaceId) const {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  NSRect frame = surface->window.frame;
+  SurfacePoint point{};
+  point.x = static_cast<int32_t>(std::lround(frame.origin.x));
+  point.y = static_cast<int32_t>(std::lround(frame.origin.y));
+  return point;
+}
+
+HostStatus HostMac::setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  NSRect frame = surface->window.frame;
+  frame.origin.x = static_cast<CGFloat>(x);
+  frame.origin.y = static_cast<CGFloat>(y);
+  [surface->window setFrame:frame display:YES];
   return {};
 }
 

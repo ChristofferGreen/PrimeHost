@@ -10,6 +10,7 @@ platform-neutral and stable across backends.
 - `FrameConfig`: presentation and pacing configuration per surface.
 - `SurfaceConfig`: surface creation settings.
 - `SurfaceSize`: logical surface size in points.
+- `SurfacePoint`: logical surface position in points.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
 - `HostStatus`, `HostResult<T>`, `HostError`: error reporting for host operations using `std::expected`.
@@ -31,7 +32,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Get/set window position and size in logical pixels (points).
 - Optional min/max size constraints.
 - Defaults: no constraints; size/position are controlled by the OS until explicitly set.
-- Implemented: `surfaceSize`, `setSurfaceSize` (size only).
+- Implemented: `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition` (size/position only).
 
 ## Cursor (Draft)
 - Standard cursor shapes plus custom cursor image support.
@@ -138,7 +139,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
-- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`
+- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 
