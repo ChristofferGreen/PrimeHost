@@ -308,6 +308,8 @@ AudioStreamConfig resolveAudioStreamConfig(const AudioStreamConfig& config);
 
 FrameConfig resolveFrameConfig(const FrameConfig& config, const SurfaceCapabilities& caps);
 
+uint32_t effectiveBufferCount(const FrameConfig& config, const SurfaceCapabilities& caps);
+
 } // namespace PrimeHost
 ```
 
