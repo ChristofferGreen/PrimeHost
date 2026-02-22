@@ -97,6 +97,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_devices.cpp
     tests/unit/test_display_interval.cpp
     tests/unit/test_surface_title.cpp
+    tests/unit/test_surface_size.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp

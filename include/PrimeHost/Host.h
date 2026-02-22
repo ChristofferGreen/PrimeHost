@@ -160,6 +160,11 @@ struct SurfaceConfig {
   std::optional<std::string> title;
 };
 
+struct SurfaceSize {
+  uint32_t width = 0u;
+  uint32_t height = 0u;
+};
+
 enum class PointerPhase {
   Down,
   Move,
@@ -345,6 +350,8 @@ public:
   virtual HostResult<FrameConfig> frameConfig(SurfaceId surfaceId) const = 0;
   virtual HostResult<std::optional<std::chrono::nanoseconds>> displayInterval(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) = 0;
+  virtual HostResult<SurfaceSize> surfaceSize(SurfaceId surfaceId) const = 0;
+  virtual HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
 
