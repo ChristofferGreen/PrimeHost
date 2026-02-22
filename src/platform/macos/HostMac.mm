@@ -9,6 +9,7 @@
 #import <GameController/GameController.h>
 #import <GameController/GCDualShockGamepad.h>
 #import <GameController/GCDualSenseGamepad.h>
+#import <ImageIO/ImageIO.h>
 #import <IOKit/hid/IOHIDManager.h>
 #import <IOKit/hid/IOHIDDevice.h>
 #import <IOKit/hid/IOHIDKeys.h>
@@ -36,6 +37,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <dlfcn.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -85,6 +87,14 @@ struct SurfaceState {
 
 std::optional<GamepadProfile> match_gamepad_profile(uint16_t vendorId, uint16_t productId, std::string_view name) {
   return findGamepadProfile(vendorId, productId, name);
+}
+
+using WindowImageFn = CGImageRef (*)(CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption);
+
+WindowImageFn window_image_fn() {
+  static WindowImageFn fn =
+      reinterpret_cast<WindowImageFn>(dlsym(RTLD_DEFAULT, "CGWindowListCreateImage"));
+  return fn;
 }
 
 uint16_t hid_uint16_property(IOHIDDeviceRef device, CFStringRef key) {
@@ -556,6 +566,9 @@ public:
   HostResult<size_t> clipboardTextSize() const override;
   HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
   HostStatus setClipboardText(Utf8TextView text) override;
+  HostStatus writeSurfaceScreenshot(SurfaceId surfaceId,
+                                    Utf8TextView path,
+                                    const ScreenshotConfig& config) override;
   HostResult<FileDialogResult> fileDialog(const FileDialogConfig& config,
                                           std::span<char> buffer) const override;
   HostResult<size_t> fileDialogPaths(const FileDialogConfig& config,
@@ -1719,6 +1732,87 @@ HostStatus HostMac::setClipboardText(Utf8TextView text) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   if (![pasteboard setString:nsText forType:NSPasteboardTypeString]) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  return {};
+}
+
+HostStatus HostMac::writeSurfaceScreenshot(SurfaceId surfaceId,
+                                           Utf8TextView path,
+                                           const ScreenshotConfig& config) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (path.empty()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  NSString* nsPath = utf8_to_nsstring(path);
+  if (!nsPath) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  NSURL* url = [NSURL fileURLWithPath:nsPath];
+  if (!url) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+
+  CGWindowID windowId = static_cast<CGWindowID>(surface->window.windowNumber);
+  CGWindowListOption listOptions = kCGWindowListOptionIncludingWindow;
+  if (!config.includeHidden) {
+    listOptions = static_cast<CGWindowListOption>(listOptions | kCGWindowListOptionOnScreenOnly);
+  }
+  CGWindowImageOption imageOptions = kCGWindowImageDefault;
+  if (config.scope == ScreenshotScope::Surface) {
+    imageOptions = static_cast<CGWindowImageOption>(imageOptions | kCGWindowImageBoundsIgnoreFraming);
+  }
+  if (auto fn = window_image_fn()) {
+    CGImageRef image = fn(CGRectNull, listOptions, windowId, imageOptions);
+    if (!image) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    CGImageDestinationRef destination =
+        CGImageDestinationCreateWithURL((__bridge CFURLRef)url,
+                                        (__bridge CFStringRef)UTTypePNG.identifier,
+                                        1,
+                                        nullptr);
+    if (!destination) {
+      CGImageRelease(image);
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    CGImageDestinationAddImage(destination, image, nullptr);
+    bool finalized = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+    CGImageRelease(image);
+    if (!finalized) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    return {};
+  }
+
+  if (!config.includeHidden && (!surface->window.isVisible || surface->window.isMiniaturized)) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  NSView* targetView = surface->view;
+  if (config.scope == ScreenshotScope::Window) {
+    NSView* frameView = surface->window.contentView.superview;
+    if (frameView) {
+      targetView = frameView;
+    }
+  }
+  if (!targetView) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  NSRect bounds = targetView.bounds;
+  NSBitmapImageRep* rep = [targetView bitmapImageRepForCachingDisplayInRect:bounds];
+  if (!rep) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  [targetView cacheDisplayInRect:bounds toBitmapImageRep:rep];
+  NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+  if (!data) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  if (![data writeToURL:url atomically:YES]) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
   return {};

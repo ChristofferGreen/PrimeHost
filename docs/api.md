@@ -15,6 +15,7 @@ platform-neutral and stable across backends.
 - `PermissionType`, `PermissionStatus`: permission categories and states.
 - `AppPathType`: standard app path categories.
 - `FileDialogMode`, `FileDialogConfig`, `FileDialogResult`: native file dialog settings and results.
+- `ScreenshotScope`, `ScreenshotConfig`: screenshot capture configuration.
 - `LocaleInfo`: locale language/region tags.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
@@ -104,6 +105,25 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Text, file paths, and image data where supported.
 - Default: text-only on platforms without richer formats.
 - Implemented: `clipboardTextSize`, `clipboardText`, `setClipboardText` (text-only).
+
+## Screenshots (Debug)
+- Write a PNG screenshot of a surface/window to disk.
+- `ScreenshotScope::Surface` captures the surface content; `ScreenshotScope::Window` includes window framing.
+- `ScreenshotConfig::includeHidden` controls whether hidden/minimized windows can be captured.
+- PNG is the only supported output format.
+- Implemented: `writeSurfaceScreenshot` (macOS).
+
+Example:
+```cpp
+PrimeHost::ScreenshotConfig config{};
+config.scope = PrimeHost::ScreenshotScope::Surface;
+config.includeHidden = true;
+
+auto status = host->writeSurfaceScreenshot(surfaceId, "/tmp/primehost-shot.png", config);
+if (!status.has_value()) {
+  // handle error
+}
+```
 
 ## File Dialogs (Draft)
 - Native open/save panels.

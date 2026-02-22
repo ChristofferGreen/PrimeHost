@@ -130,6 +130,11 @@ enum class FileDialogMode {
   SaveFile,
 };
 
+enum class ScreenshotScope {
+  Surface,
+  Window,
+};
+
 struct SurfaceCapabilities {
   bool supportsVsyncToggle = false;
   bool supportsTearing = false;
@@ -277,6 +282,11 @@ inline FileDialogConfig openMixedDialogConfig(Utf8TextView defaultPath = {}) {
 struct FileDialogResult {
   bool accepted = false;
   Utf8TextView path;
+};
+
+struct ScreenshotConfig {
+  ScreenshotScope scope = ScreenshotScope::Surface;
+  bool includeHidden = false;
 };
 
 enum class PointerPhase {
@@ -479,6 +489,9 @@ public:
   virtual HostResult<size_t> clipboardTextSize() const = 0;
   virtual HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const = 0;
   virtual HostStatus setClipboardText(Utf8TextView text) = 0;
+  virtual HostStatus writeSurfaceScreenshot(SurfaceId surfaceId,
+                                            Utf8TextView path,
+                                            const ScreenshotConfig& config = {}) = 0;
   virtual HostResult<FileDialogResult> fileDialog(const FileDialogConfig& config,
                                                    std::span<char> buffer) const = 0;
   virtual HostResult<size_t> fileDialogPaths(const FileDialogConfig& config,
