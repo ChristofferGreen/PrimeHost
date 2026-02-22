@@ -205,6 +205,17 @@ inline FileDialogConfig saveFileDialogConfig(Utf8TextView defaultPath = {},
   return config;
 }
 
+inline FileDialogConfig openMixedDialogConfig(Utf8TextView defaultPath = {}) {
+  FileDialogConfig config{};
+  config.mode = FileDialogMode::Open;
+  config.allowFiles = true;
+  config.allowDirectories = true;
+  if (!defaultPath.empty()) {
+    config.defaultPath = defaultPath;
+  }
+  return config;
+}
+
 struct FileDialogResult {
   bool accepted = false;
   Utf8TextView path;
