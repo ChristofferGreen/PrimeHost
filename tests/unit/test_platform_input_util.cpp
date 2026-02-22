@@ -37,4 +37,18 @@ PH_TEST("primehost.input.util", "analog button value ignores non finite") {
   PH_CHECK(!value.has_value());
 }
 
+PH_TEST("primehost.input.util", "clamp gamepad axis value") {
+  PH_CHECK(clampGamepadAxisValue(static_cast<uint32_t>(GamepadAxisId::LeftX), -2.0f) == -1.0f);
+  PH_CHECK(clampGamepadAxisValue(static_cast<uint32_t>(GamepadAxisId::LeftX), 2.0f) == 1.0f);
+  PH_CHECK(clampGamepadAxisValue(static_cast<uint32_t>(GamepadAxisId::RightY), 0.25f) == 0.25f);
+  PH_CHECK(clampGamepadAxisValue(static_cast<uint32_t>(GamepadAxisId::LeftTrigger), -1.0f) == 0.0f);
+  PH_CHECK(clampGamepadAxisValue(static_cast<uint32_t>(GamepadAxisId::RightTrigger), 2.0f) == 1.0f);
+}
+
+PH_TEST("primehost.input.util", "clamp gamepad axis value ignores non finite") {
+  auto value = clampGamepadAxisValue(static_cast<uint32_t>(GamepadAxisId::LeftX),
+                                     std::numeric_limits<float>::infinity());
+  PH_CHECK(value == 0.0f);
+}
+
 TEST_SUITE_END();

@@ -4,6 +4,8 @@
 #include <cmath>
 #include <optional>
 
+#include "PrimeHost/Host.h"
+
 namespace PrimeHost {
 
 inline float tiltNormalizedToDegrees(float normalized) {
@@ -29,6 +31,17 @@ inline std::optional<float> analogButtonValue(bool isAnalog, float value) {
     return std::nullopt;
   }
   return std::clamp(value, 0.0f, 1.0f);
+}
+
+inline float clampGamepadAxisValue(uint32_t controlId, float value) {
+  if (!std::isfinite(value)) {
+    return 0.0f;
+  }
+  if (controlId == static_cast<uint32_t>(GamepadAxisId::LeftTrigger) ||
+      controlId == static_cast<uint32_t>(GamepadAxisId::RightTrigger)) {
+    return std::clamp(value, 0.0f, 1.0f);
+  }
+  return std::clamp(value, -1.0f, 1.0f);
 }
 
 } // namespace PrimeHost

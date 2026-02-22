@@ -4352,7 +4352,7 @@ void HostMac::enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float va
   GamepadAxisEvent axis{};
   axis.deviceId = deviceId;
   axis.controlId = controlId;
-  axis.value = value;
+  axis.value = clampGamepadAxisValue(controlId, value);
 
   Event event{};
   event.scope = Event::Scope::Global;
