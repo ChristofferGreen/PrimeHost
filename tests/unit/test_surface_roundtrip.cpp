@@ -44,6 +44,16 @@ PH_TEST("primehost.surface", "surface size round-trip") {
     }
   }
 
+  auto minReset = host->setSurfaceMinSize(surface.value(), 0u, 0u);
+  PH_CHECK(minReset.has_value());
+  auto maxReset = host->setSurfaceMaxSize(surface.value(), 0u, 0u);
+  PH_CHECK(maxReset.has_value());
+
+  auto minClamp = host->setSurfaceMinSize(surface.value(), 10u, 12u);
+  PH_CHECK(minClamp.has_value());
+  auto maxClamp = host->setSurfaceMaxSize(surface.value(), 1024u, 768u);
+  PH_CHECK(maxClamp.has_value());
+
   auto scale = host->surfaceScale(surface.value());
   PH_CHECK(scale.has_value());
   if (scale) {
