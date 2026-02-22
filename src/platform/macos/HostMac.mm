@@ -137,6 +137,34 @@ std::string cfstring_to_utf8(CFStringRef value) {
   return buffer;
 }
 
+HostResult<NSString*> app_path_for_type(AppPathType type) {
+  NSSearchPathDirectory directory = NSApplicationSupportDirectory;
+  bool appendPreferences = false;
+  switch (type) {
+    case AppPathType::UserData:
+      directory = NSApplicationSupportDirectory;
+      break;
+    case AppPathType::Cache:
+      directory = NSCachesDirectory;
+      break;
+    case AppPathType::Config:
+      directory = NSLibraryDirectory;
+      appendPreferences = true;
+      break;
+    default:
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  NSArray<NSString*>* paths = NSSearchPathForDirectoriesInDomains(directory, NSUserDomainMask, YES);
+  if (!paths || paths.count == 0) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  NSString* path = paths[0];
+  if (appendPreferences) {
+    path = [path stringByAppendingPathComponent:@"Preferences"];
+  }
+  return path;
+}
+
 PermissionStatus map_av_status(AVAuthorizationStatus status) {
   switch (status) {
     case AVAuthorizationStatusAuthorized:
@@ -432,6 +460,8 @@ public:
   HostResult<size_t> clipboardTextSize() const override;
   HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
   HostStatus setClipboardText(Utf8TextView text) override;
+  HostResult<size_t> appPathSize(AppPathType type) const override;
+  HostResult<Utf8TextView> appPath(AppPathType type, std::span<char> buffer) const override;
   HostResult<float> surfaceScale(SurfaceId surfaceId) const override;
   HostStatus setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
   HostStatus setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
@@ -1591,6 +1621,42 @@ HostStatus HostMac::setClipboardText(Utf8TextView text) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
   return {};
+}
+
+HostResult<size_t> HostMac::appPathSize(AppPathType type) const {
+  auto pathResult = app_path_for_type(type);
+  if (!pathResult) {
+    return std::unexpected(pathResult.error());
+  }
+  NSString* path = pathResult.value();
+  if (!path) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  NSUInteger length = [path lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+  return static_cast<size_t>(length);
+}
+
+HostResult<Utf8TextView> HostMac::appPath(AppPathType type, std::span<char> buffer) const {
+  if (buffer.empty()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  auto pathResult = app_path_for_type(type);
+  if (!pathResult) {
+    return std::unexpected(pathResult.error());
+  }
+  NSString* path = pathResult.value();
+  if (!path) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
+  if (!data) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  if (data.length > buffer.size()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  std::memcpy(buffer.data(), data.bytes, data.length);
+  return Utf8TextView{buffer.data(), static_cast<size_t>(data.length)};
 }
 
 HostResult<float> HostMac::surfaceScale(SurfaceId surfaceId) const {

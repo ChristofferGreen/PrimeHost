@@ -13,6 +13,7 @@ platform-neutral and stable across backends.
 - `SurfacePoint`: logical surface position in points.
 - `DisplayInfo`: display bounds, scale, refresh, and identity.
 - `PermissionType`, `PermissionStatus`: permission categories and states.
+- `AppPathType`: standard app path categories.
 - `LocaleInfo`: locale language/region tags.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
@@ -106,6 +107,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
 - Defaults follow platform conventions (e.g., `~/Library`, `AppData`, `~/.config`).
+- Implemented: `appPathSize`, `appPath` (macOS).
 
 ## Events
 - `Event`: tagged union of input, resize, and lifecycle events.
@@ -163,6 +165,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
 - `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`, `surfaceScale`, `setSurfaceMinSize`, `setSurfaceMaxSize`
+- `Host::appPathSize`, `appPath`
 - `Host::setGamepadRumble`
 - `Host::checkPermission`, `requestPermission`
 - `Host::beginIdleSleepInhibit`, `endIdleSleepInhibit`
