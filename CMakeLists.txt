@@ -63,6 +63,7 @@ if(APPLE)
   find_library(GAMECONTROLLER_LIBRARY GameController)
   find_library(COREGRAPHICS_LIBRARY CoreGraphics)
   find_library(METAL_LIBRARY Metal)
+  find_library(PHOTOS_LIBRARY Photos)
   find_library(AUDIOTOOLBOX_LIBRARY AudioToolbox)
   find_library(AUDIOUNIT_LIBRARY AudioUnit)
   find_library(COREAUDIO_LIBRARY CoreAudio)
@@ -78,6 +79,7 @@ if(APPLE)
     ${GAMECONTROLLER_LIBRARY}
     ${COREGRAPHICS_LIBRARY}
     ${METAL_LIBRARY}
+    ${PHOTOS_LIBRARY}
     ${AUDIOTOOLBOX_LIBRARY}
     ${AUDIOUNIT_LIBRARY}
     ${COREAUDIO_LIBRARY}

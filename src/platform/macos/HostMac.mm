@@ -15,6 +15,7 @@
 #import <IOKit/hid/IOHIDUsageTables.h>
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #import <Metal/Metal.h>
+#import <Photos/Photos.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <UserNotifications/UserNotifications.h>
@@ -174,6 +175,20 @@ PermissionStatus map_location_status(CLAuthorizationStatus status) {
     case kCLAuthorizationStatusRestricted:
       return PermissionStatus::Restricted;
     case kCLAuthorizationStatusNotDetermined:
+    default:
+      return PermissionStatus::Unknown;
+  }
+}
+
+PermissionStatus map_photo_status(PHAuthorizationStatus status) {
+  switch (status) {
+    case PHAuthorizationStatusAuthorized:
+      return PermissionStatus::Granted;
+    case PHAuthorizationStatusDenied:
+      return PermissionStatus::Denied;
+    case PHAuthorizationStatusRestricted:
+      return PermissionStatus::Restricted;
+    case PHAuthorizationStatusNotDetermined:
     default:
       return PermissionStatus::Unknown;
   }
@@ -1726,6 +1741,15 @@ HostResult<PermissionStatus> HostMac::checkPermission(PermissionType type) const
       }
       return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Photos:
+      if (@available(macOS 10.13, *)) {
+        NSBundle* bundle = [NSBundle mainBundle];
+        if (!bundle || !bundle.bundleIdentifier) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatus];
+        return map_photo_status(status);
+      }
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
   }
@@ -1788,6 +1812,33 @@ HostResult<PermissionStatus> HostMac::requestPermission(PermissionType type) {
       }
       return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Photos:
+      if (@available(macOS 10.13, *)) {
+        NSBundle* bundle = [NSBundle mainBundle];
+        if (!bundle || !bundle.bundleIdentifier) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        NSString* usage = [bundle objectForInfoDictionaryKey:@"NSPhotoLibraryUsageDescription"];
+        if (!usage) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        __block PHAuthorizationStatus status = PHAuthorizationStatusNotDetermined;
+        if (@available(macOS 11.0, *)) {
+          [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelReadWrite
+                                                    handler:^(PHAuthorizationStatus authStatus) {
+                                                      status = authStatus;
+                                                      dispatch_semaphore_signal(semaphore);
+                                                    }];
+        } else {
+          [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus authStatus) {
+            status = authStatus;
+            dispatch_semaphore_signal(semaphore);
+          }];
+        }
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        return map_photo_status(status);
+      }
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
   }
