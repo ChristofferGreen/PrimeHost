@@ -701,6 +701,7 @@ private:
   const SurfaceState* findSurface(uint64_t surfaceId) const;
   void updateDisplayLinkState();
   void updateHostLimiterState();
+  void requestFrameForSurface(SurfaceState* surface);
 
   NSApplication* app_ = nullptr;
   std::unordered_map<uint64_t, std::unique_ptr<SurfaceState>> surfaces_;
@@ -734,6 +735,7 @@ private:
   std::optional<std::chrono::nanoseconds> displayInterval_{};
   dispatch_source_t hostLimiterTimer_ = nil;
   std::chrono::nanoseconds hostLimiterInterval_{0};
+  std::optional<SurfaceId> focusedSurface_{};
   bool relativePointerEnabled_ = false;
   std::optional<SurfaceId> relativePointerSurface_{};
   uint64_t nextIdleSleepToken_ = 1u;
@@ -1720,6 +1722,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
 
   [window makeKeyAndOrderFront:nil];
   [app_ activateIgnoringOtherApps:YES];
+  focusedSurface_ = surfaceId;
 
   auto state = std::make_unique<SurfaceState>();
   SurfaceState* statePtr = state.get();
@@ -1771,6 +1774,9 @@ HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
   auto it = surfaces_.find(surfaceId.value);
   if (it == surfaces_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (focusedSurface_ && focusedSurface_->value == surfaceId.value) {
+    focusedSurface_.reset();
   }
   if (it->second && it->second->headless) {
     Event evt{};
@@ -3496,6 +3502,10 @@ void HostMac::handleResize(uint64_t surfaceId) {
 }
 
 void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDeviceType type, NSPoint point, NSEvent* event) {
+  auto* surface = findSurface(surfaceId);
+  if (!surface) {
+    return;
+  }
   PointerDeviceType deviceType = type;
   uint32_t deviceId = kMouseDeviceId;
   if (event) {
@@ -3537,6 +3547,7 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   evt.time = std::chrono::steady_clock::now();
   evt.payload = pointer;
   enqueueEvent(std::move(evt));
+  requestFrameForSurface(surface);
 }
 
 void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, PointerPhase phase) {
@@ -3593,6 +3604,7 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
       capsIt->second.caps.maxTouches = std::max(capsIt->second.caps.maxTouches, count);
     }
   }
+  bool queued = false;
   for (NSTouch* touch in touches) {
     if (!touch) {
       continue;
@@ -3632,10 +3644,14 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
     evt.time = std::chrono::steady_clock::now();
     evt.payload = pointer;
     enqueueEvent(std::move(evt));
+    queued = true;
 
     if (phase == PointerPhase::Up || phase == PointerPhase::Cancel) {
       touchIds_.erase(key);
     }
+  }
+  if (queued) {
+    requestFrameForSurface(surface);
   }
 }
 
@@ -3666,9 +3682,14 @@ void HostMac::handleTabletProximity(uint64_t surfaceId, NSEvent* event) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = pointer;
   enqueueEvent(std::move(evt));
+  requestFrameForSurface(surface);
 }
 
 void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {
+  auto* surface = findSurface(surfaceId);
+  if (!surface) {
+    return;
+  }
   ScrollEvent scroll{};
   scroll.deviceId = kMouseDeviceId;
   scroll.deltaX = static_cast<float>(event.scrollingDeltaX);
@@ -3681,6 +3702,7 @@ void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = scroll;
   enqueueEvent(std::move(evt));
+  requestFrameForSurface(surface);
 }
 
 void HostMac::handleKey(NSEvent* event, bool pressed, bool repeat) {
@@ -3702,6 +3724,9 @@ void HostMac::handleKey(NSEvent* event, bool pressed, bool repeat) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = key;
   enqueueEvent(std::move(evt));
+  if (focusedSurface_) {
+    requestFrameForSurface(findSurface(focusedSurface_->value));
+  }
 }
 
 void HostMac::handleModifiers(NSEvent* event) {
@@ -3747,10 +3772,17 @@ void HostMac::handleModifiers(NSEvent* event) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = key;
   enqueueEvent(std::move(evt));
+  if (focusedSurface_) {
+    requestFrameForSurface(findSurface(focusedSurface_->value));
+  }
 }
 
 void HostMac::handleText(uint64_t surfaceId, NSString* text) {
   if (!text) {
+    return;
+  }
+  auto* surface = findSurface(surfaceId);
+  if (!surface) {
     return;
   }
   NSData* data = [text dataUsingEncoding:NSUTF8StringEncoding];
@@ -3768,12 +3800,18 @@ void HostMac::handleText(uint64_t surfaceId, NSString* text) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = textEvent;
   enqueueEvent(std::move(evt), std::move(utf8));
+  requestFrameForSurface(surface);
 }
 
 void HostMac::handleFocus(uint64_t surfaceId, bool focused) {
   auto* surface = findSurface(surfaceId);
   if (!surface) {
     return;
+  }
+  if (focused) {
+    focusedSurface_ = surface->surfaceId;
+  } else if (focusedSurface_ && focusedSurface_->value == surfaceId) {
+    focusedSurface_.reset();
   }
   FocusEvent focus{};
   focus.focused = focused;
@@ -3989,6 +4027,9 @@ void HostMac::handleGamepadConnected(GCController* controller) {
   event.time = std::chrono::steady_clock::now();
   event.payload = DeviceEvent{.deviceId = deviceId, .deviceType = DeviceType::Gamepad, .connected = true};
   enqueueEvent(std::move(event));
+  if (focusedSurface_) {
+    requestFrameForSurface(findSurface(focusedSurface_->value));
+  }
 }
 
 void HostMac::handleGamepadDisconnected(GCController* controller) {
@@ -4095,6 +4136,7 @@ void HostMac::handleDrop(uint64_t surfaceId, NSArray<NSURL*>* urls) {
   event.time = std::chrono::steady_clock::now();
   event.payload = drop;
   enqueueEvent(std::move(event), std::move(text));
+  requestFrameForSurface(surface);
 }
 
 void HostMac::handlePowerStateChange() {
@@ -4133,6 +4175,9 @@ void HostMac::enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool p
   event.time = std::chrono::steady_clock::now();
   event.payload = button;
   enqueueEvent(std::move(event));
+  if (focusedSurface_) {
+    requestFrameForSurface(findSurface(focusedSurface_->value));
+  }
 }
 
 void HostMac::enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float value) {
@@ -4146,6 +4191,9 @@ void HostMac::enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float va
   event.time = std::chrono::steady_clock::now();
   event.payload = axis;
   enqueueEvent(std::move(event));
+  if (focusedSurface_) {
+    requestFrameForSurface(findSurface(focusedSurface_->value));
+  }
 }
 
 void HostMac::releaseRelativePointer() {
@@ -4227,6 +4275,18 @@ HostResult<EventBatch> HostMac::buildBatch(std::span<const QueuedEvent> events, 
       std::span<const char>(buffer.textBytes.data(), writer.offset),
   };
   return batch;
+}
+
+void HostMac::requestFrameForSurface(SurfaceState* surface) {
+  if (!surface || !callbacks_.onFrame) {
+    return;
+  }
+  if (surface->frameConfig.framePolicy == FramePolicy::Continuous) {
+    return;
+  }
+  bool bypassCap = surface->frameConfig.framePolicy == FramePolicy::Capped &&
+                   surface->frameConfig.framePacingSource == FramePacingSource::HostLimiter;
+  requestFrame(surface->surfaceId, bypassCap);
 }
 
 void HostMac::enqueueEvent(Event event, std::string text) {
