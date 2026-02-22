@@ -19,6 +19,7 @@ platform-neutral and stable across backends.
 - `FileDialogMode`, `FileDialogConfig`, `FileDialogResult`: native file dialog settings and results.
 - `ScreenshotScope`, `ScreenshotConfig`: screenshot capture configuration.
 - `LocaleInfo`: locale language/region tags.
+- `LogLevel`, `LogCallback`: host logging hook.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
 - `CursorShape`: standard cursor shapes.
@@ -360,7 +361,7 @@ for (const auto& evt : batch->events) {
 - Cursor visibility + relative pointer mode (implemented), confine (draft).
 - Window state controls and DPI/scale queries (implemented).
 - Timing utilities for sleep/pacing (implemented).
-- Host-level logging callback/hook (draft).
+- Host-level logging callback/hook (implemented).
 - Window geometry APIs (implemented).
 - Custom cursor images (implemented on macOS).
 - Safe-area insets (implemented on macOS).
@@ -383,6 +384,9 @@ for (const auto& evt : batch->events) {
 
 ## Timing Utility
 - `now()`, `sleepFor()`, `sleepUntil()` in `PrimeHost/Timing.h`.
+
+## Logging
+- `setLogCallback` installs a host-level logger for diagnostics.
 
 ## Audio Output
 Audio APIs are defined in `docs/audio.md` and are intended to be a low-level output layer only.

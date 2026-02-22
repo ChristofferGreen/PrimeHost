@@ -102,6 +102,13 @@ enum class HostErrorCode {
   PlatformFailure,
 };
 
+enum class LogLevel {
+  Debug,
+  Info,
+  Warning,
+  Error,
+};
+
 struct HostError {
   HostErrorCode code = HostErrorCode::Unknown;
 };
@@ -110,6 +117,8 @@ using HostStatus = std::expected<void, HostError>;
 
 template <typename T>
 using HostResult = std::expected<T, HostError>;
+
+using LogCallback = std::function<void(LogLevel level, Utf8TextView message)>;
 
 struct HostCapabilities {
   bool supportsClipboard = false;
@@ -630,6 +639,7 @@ public:
   virtual HostStatus updateTrayItemTitle(uint64_t trayId, Utf8TextView title) = 0;
   virtual HostStatus removeTrayItem(uint64_t trayId) = 0;
   virtual HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) = 0;
+  virtual HostStatus setLogCallback(LogCallback callback) = 0;
 
   virtual HostStatus setCallbacks(Callbacks callbacks) = 0;
 };

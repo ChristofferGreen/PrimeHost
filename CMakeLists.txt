@@ -136,6 +136,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_focus_event.cpp
     tests/unit/test_window_icon.cpp
     tests/unit/test_timing.cpp
+    tests/unit/test_log_callback.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp

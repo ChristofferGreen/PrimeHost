@@ -629,6 +629,7 @@ public:
   HostStatus updateTrayItemTitle(uint64_t trayId, Utf8TextView title) override;
   HostStatus removeTrayItem(uint64_t trayId) override;
   HostStatus setRelativePointerCapture(SurfaceId surfaceId, bool enabled) override;
+  HostStatus setLogCallback(LogCallback callback) override;
 
   HostStatus setCallbacks(Callbacks callbacks) override;
 
@@ -653,6 +654,7 @@ public:
   void updateCursorRects(uint64_t surfaceId, NSView* view);
   void handlePowerStateChange();
   void handleThermalStateChange();
+  void logMessage(LogLevel level, std::string_view message) const;
 
 private:
   struct QueuedEvent {
@@ -691,6 +693,7 @@ private:
   std::vector<Event> callbackEvents_;
   std::vector<char> callbackText_;
   Callbacks callbacks_{};
+  LogCallback logCallback_{};
   uint64_t nextSurfaceId_ = 1u;
   uint32_t nextDeviceId_ = 3u;
   uint64_t nextTrayId_ = 1u;
@@ -1516,6 +1519,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
                                                    backing:NSBackingStoreBuffered
                                                      defer:NO];
   if (!window) {
+    logMessage(LogLevel::Error, "Failed to create NSWindow");
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
 
@@ -1532,6 +1536,11 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
 
   CAMetalLayer* layer = [CAMetalLayer layer];
   id device = MTLCreateSystemDefaultDevice();
+  if (!device) {
+    logMessage(LogLevel::Error, "Failed to create Metal device");
+    [window close];
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
   layer.device = device;
   layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   layer.framebufferOnly = YES;
@@ -1558,6 +1567,11 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   state->view = view;
   state->layer = layer;
   state->commandQueue = [device newCommandQueue];
+  if (!state->commandQueue) {
+    logMessage(LogLevel::Error, "Failed to create Metal command queue");
+    [window close];
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
   state->delegate = delegate;
   state->lastFrameTime.reset();
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
@@ -3092,6 +3106,11 @@ HostStatus HostMac::setRelativePointerCapture(SurfaceId surfaceId, bool enabled)
   return {};
 }
 
+HostStatus HostMac::setLogCallback(LogCallback callback) {
+  logCallback_ = std::move(callback);
+  return {};
+}
+
 HostStatus HostMac::setCallbacks(Callbacks callbacks) {
   callbacks_ = std::move(callbacks);
   updateDisplayLinkState();
@@ -3780,6 +3799,13 @@ void HostMac::updateCursorRects(uint64_t surfaceId, NSView* view) {
     cursor = [NSCursor arrowCursor];
   }
   [view addCursorRect:view.bounds cursor:cursor];
+}
+
+void HostMac::logMessage(LogLevel level, std::string_view message) const {
+  if (!logCallback_ || message.empty()) {
+    return;
+  }
+  logCallback_(level, Utf8TextView{message.data(), message.size()});
 }
 
 void HostMac::pumpEvents(bool wait) {
