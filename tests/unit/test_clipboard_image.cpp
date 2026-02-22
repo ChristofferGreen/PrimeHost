@@ -174,6 +174,24 @@ PH_TEST("primehost.clipboard_image", "read back image") {
     PH_CHECK(readBack->size.height == 1u);
     PH_CHECK(readBack->pixels.size() == buffer.size());
   }
+
+  auto textSize = host->clipboardTextSize();
+  if (!textSize.has_value()) {
+    PH_CHECK(textSize.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  if (textSize.value() > 0u) {
+    return;
+  }
+  std::array<char, 1> textBuf{};
+  auto text = host->clipboardText(textBuf);
+  if (text.has_value()) {
+    PH_CHECK(text->size() == 0u);
+  } else {
+    bool allowed = text.error().code == HostErrorCode::BufferTooSmall;
+    allowed = allowed || text.error().code == HostErrorCode::Unsupported;
+    PH_CHECK(allowed);
+  }
 }
 
 PH_TEST("primehost.clipboard_image", "no image after text") {
