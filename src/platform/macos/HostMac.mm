@@ -340,6 +340,9 @@ public:
   HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const override;
   HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) override;
   HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) override;
+  HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
+  HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
+  HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1206,6 +1209,43 @@ HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
   } else {
     [NSCursor hide];
   }
+  return {};
+}
+
+HostStatus HostMac::setSurfaceMinimized(SurfaceId surfaceId, bool minimized) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (minimized) {
+    [surface->window miniaturize:nil];
+  } else {
+    [surface->window deminiaturize:nil];
+  }
+  return {};
+}
+
+HostStatus HostMac::setSurfaceMaximized(SurfaceId surfaceId, bool maximized) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (maximized == static_cast<bool>(surface->window.zoomed)) {
+    return {};
+  }
+  [surface->window zoom:nil];
+  return {};
+}
+
+HostStatus HostMac::setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (fullscreen == static_cast<bool>(surface->window.styleMask & NSWindowStyleMaskFullScreen)) {
+    return {};
+  }
+  [surface->window toggleFullScreen:nil];
   return {};
 }
 

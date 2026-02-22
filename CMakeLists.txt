@@ -100,6 +100,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_surface_size.cpp
     tests/unit/test_surface_position.cpp
     tests/unit/test_cursor_visible.cpp
+    tests/unit/test_surface_state.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp

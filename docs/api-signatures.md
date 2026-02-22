@@ -302,6 +302,9 @@ public:
   virtual HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) = 0;
   virtual HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) = 0;
+  virtual HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) = 0;
+  virtual HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) = 0;
+  virtual HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,

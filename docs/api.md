@@ -34,6 +34,10 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Defaults: no constraints; size/position are controlled by the OS until explicitly set.
 - Implemented: `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition` (size/position only).
 
+## Window State (Draft)
+- Minimize/maximize/fullscreen controls per surface.
+- Implemented: `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`.
+
 ## Cursor (Draft)
 - Standard cursor shapes plus custom cursor image support.
 - Defaults: system arrow cursor; cursor visible unless explicitly hidden.
@@ -140,7 +144,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
-- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`
+- `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`
 - `Host::setGamepadRumble`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
 
@@ -175,7 +179,7 @@ for (const auto& evt : batch->events) {
 - Offscreen/headless surfaces (draft).
 - Clipboard read/write and IME composition events (draft).
 - Cursor visibility/confine/relative pointer mode (draft).
-- Window state controls (minimize/maximize/fullscreen) and DPI/scale queries (draft).
+- Window state controls and DPI/scale queries (draft).
 - Timing utilities for sleep/pacing (draft).
 - Host-level logging callback/hook (draft).
 - Window geometry APIs (draft).
