@@ -30,7 +30,8 @@ inline HostStatus validateFrameConfig(const FrameConfig& config, const SurfaceCa
   if (!config.vsync && !caps.supportsVsyncToggle) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
-  if (config.framePolicy == FramePolicy::Capped) {
+  if (config.framePolicy == FramePolicy::Capped &&
+      config.framePacingSource == FramePacingSource::HostLimiter) {
     if (!config.frameInterval || config.frameInterval->count() <= 0) {
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
     }

@@ -43,9 +43,17 @@ PH_TEST("primehost.frameconfig", "validation rejects invalid settings") {
 
   FrameConfig badCapped = config;
   badCapped.framePolicy = FramePolicy::Capped;
+  badCapped.framePacingSource = FramePacingSource::HostLimiter;
   badCapped.frameInterval.reset();
   auto badCappedStatus = validateFrameConfig(badCapped, caps);
   PH_CHECK(!badCappedStatus.has_value());
+
+  FrameConfig platformCapped = config;
+  platformCapped.framePolicy = FramePolicy::Capped;
+  platformCapped.framePacingSource = FramePacingSource::Platform;
+  platformCapped.frameInterval.reset();
+  auto platformStatus = validateFrameConfig(platformCapped, caps);
+  PH_CHECK(platformStatus.has_value());
 
   FrameConfig badLatency = config;
   badLatency.maxFrameLatency = 4u;
