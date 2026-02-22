@@ -91,4 +91,49 @@ PH_TEST("primehost.cursor_image", "invalid config") {
   PH_CHECK(destroyed.has_value());
 }
 
+PH_TEST("primehost.cursor_image", "invalid hotspot") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  SurfaceConfig config{};
+  config.width = 64u;
+  config.height = 48u;
+  auto surface = host->createSurface(config);
+  if (!surface.has_value()) {
+    bool allowed = surface.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || surface.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  std::array<uint8_t, 4> pixels = {0u, 0u, 0u, 0u};
+  CursorImage image{};
+  image.width = 1u;
+  image.height = 1u;
+  image.pixels = pixels;
+
+  image.hotX = -1;
+  image.hotY = 0;
+  auto negative = host->setCursorImage(surface.value(), image);
+  PH_CHECK(!negative.has_value());
+  if (!negative.has_value()) {
+    PH_CHECK(negative.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  image.hotX = 1;
+  image.hotY = 0;
+  auto outOfBounds = host->setCursorImage(surface.value(), image);
+  PH_CHECK(!outOfBounds.has_value());
+  if (!outOfBounds.has_value()) {
+    PH_CHECK(outOfBounds.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  auto destroyed = host->destroySurface(surface.value());
+  PH_CHECK(destroyed.has_value());
+}
+
 TEST_SUITE_END();

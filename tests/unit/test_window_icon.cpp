@@ -70,6 +70,17 @@ PH_TEST("primehost.window_icon", "invalid config") {
     PH_CHECK(smallStatus.error().code == HostErrorCode::BufferTooSmall);
   }
 
+  IconImage invalidImage{};
+  invalidImage.size = ImageSize{0u, 0u};
+  invalidImage.pixels = std::span<const uint8_t>();
+  WindowIcon invalidIcon{};
+  invalidIcon.images = std::span<const IconImage>(&invalidImage, 1);
+  auto invalidStatus = host->setSurfaceIcon(surface.value(), invalidIcon);
+  PH_CHECK(!invalidStatus.has_value());
+  if (!invalidStatus.has_value()) {
+    PH_CHECK(invalidStatus.error().code == HostErrorCode::InvalidConfig);
+  }
+
   auto destroyed = host->destroySurface(surface.value());
   PH_CHECK(destroyed.has_value());
 }

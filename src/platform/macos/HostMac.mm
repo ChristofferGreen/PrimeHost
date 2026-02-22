@@ -1978,7 +1978,19 @@ HostStatus HostMac::setCursorImage(SurfaceId surfaceId, const CursorImage& image
   if (image.width == 0u || image.height == 0u || image.pixels.empty()) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
-  size_t pixelCount = static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u;
+  if (image.hotX < 0 || image.hotY < 0) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  if (static_cast<uint32_t>(image.hotX) >= image.width ||
+      static_cast<uint32_t>(image.hotY) >= image.height) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  size_t width = static_cast<size_t>(image.width);
+  size_t height = static_cast<size_t>(image.height);
+  if (width > (std::numeric_limits<size_t>::max() / height) / 4u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  size_t pixelCount = width * height * 4u;
   if (image.pixels.size() < pixelCount) {
     return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
   }
@@ -2049,6 +2061,7 @@ HostStatus HostMac::setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) 
   if (!nsImage) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
+  bool added = false;
   for (const auto& image : icon.images) {
     if (image.size.width == 0u || image.size.height == 0u || image.pixels.empty()) {
       continue;
@@ -2078,6 +2091,10 @@ HostStatus HostMac::setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) 
     }
     std::memcpy(rep.bitmapData, image.pixels.data(), pixelCount);
     [nsImage addRepresentation:rep];
+    added = true;
+  }
+  if (!added) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   if (nsImage.representations.count == 0) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
