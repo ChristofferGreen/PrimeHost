@@ -133,6 +133,49 @@ PH_TEST("primehost.clipboard_image", "buffer too small for image") {
   }
 }
 
+PH_TEST("primehost.clipboard_image", "read back image") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::array<uint8_t, 4> pixels = {255, 0, 0, 255};
+  ImageData image{};
+  image.size = ImageSize{1u, 1u};
+  image.pixels = pixels;
+
+  auto setStatus = host->setClipboardImage(image);
+  if (!setStatus.has_value()) {
+    bool allowed = setStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto size = host->clipboardImageSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  if (!size.value().has_value()) {
+    return;
+  }
+  PH_CHECK(size.value()->width == 1u);
+  PH_CHECK(size.value()->height == 1u);
+
+  std::array<uint8_t, 4> buffer{};
+  auto readBack = host->clipboardImage(buffer);
+  PH_CHECK(readBack.has_value());
+  if (readBack.has_value()) {
+    PH_CHECK(readBack->available);
+    PH_CHECK(readBack->size.width == 1u);
+    PH_CHECK(readBack->size.height == 1u);
+    PH_CHECK(readBack->pixels.size() == buffer.size());
+  }
+}
+
 PH_TEST("primehost.clipboard_image", "no image after text") {
   auto hostResult = createHost();
   if (!hostResult) {
