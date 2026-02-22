@@ -849,7 +849,7 @@ HostMac::~HostMac() {
 
 HostResult<HostCapabilities> HostMac::hostCapabilities() const {
   HostCapabilities caps{};
-  caps.supportsClipboard = false;
+  caps.supportsClipboard = true;
   caps.supportsFileDialogs = false;
   caps.supportsRelativePointer = true;
   caps.supportsIme = true;

@@ -23,6 +23,7 @@ PH_TEST("primehost.smoke", "host capabilities") {
     return;
   }
   PH_CHECK(caps->supportsRelativePointer);
+  PH_CHECK(caps->supportsClipboard);
 
   SurfaceId invalidSurface{999u};
   auto status = host->setRelativePointerCapture(invalidSurface, true);
