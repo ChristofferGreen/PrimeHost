@@ -66,6 +66,27 @@ These defaults guide the initial Apple Silicon implementation and are expected t
 - Present gating should prevent presenting more often than display interval when enabled.
 - Continuous mode is optional and should be used for animation-heavy content.
 
+## Frame Config Preflight
+Use `resolveFrameConfig` to fill defaults and `validateFrameConfig` before applying a config:
+```cpp
+auto caps = host.surfaceCapabilities(surfaceId);
+if (!caps) {
+  return;
+}
+
+PrimeHost::FrameConfig config{};
+config.presentMode = PrimeHost::PresentMode::Smooth;
+config.framePolicy = PrimeHost::FramePolicy::Capped;
+
+config = PrimeHost::resolveFrameConfig(config, caps.value());
+auto validation = PrimeHost::validateFrameConfig(config, caps.value());
+if (!validation) {
+  return;
+}
+
+host.setFrameConfig(surfaceId, config);
+```
+
 ## FramePolicy::Capped Defaults
 - If `FramePolicy::Capped` is selected and `frameInterval` is unset or zero, PrimeHost will default
   the interval to the platform display refresh (when available).
