@@ -142,6 +142,17 @@ if (result && result.value() > 0u) {
 }
 ```
 
+Example (save dialog):
+```cpp
+PrimeHost::FileDialogConfig config = PrimeHost::saveFileDialogConfig("/tmp", "scene.json");
+std::array<char, 1024> pathBytes;
+auto result = host.fileDialog(config, pathBytes);
+if (result && result->accepted) {
+  std::string_view path{result->path.data(), result->path.size()};
+  // write file to path
+}
+```
+
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
 - Defaults follow platform conventions (e.g., `~/Library`, `AppData`, `~/.config`).
