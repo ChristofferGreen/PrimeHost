@@ -42,4 +42,38 @@ PH_TEST("primehost.clipboard", "invalid utf8 set") {
   }
 }
 
+PH_TEST("primehost.clipboard", "text size and read") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::string text = "PrimeHost Clipboard";
+  auto setStatus = host->setClipboardText(text);
+  if (!setStatus.has_value()) {
+    bool allowed = setStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto size = host->clipboardTextSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  if (size.value() <= 1u) {
+    return;
+  }
+
+  std::array<char, 1> tiny{};
+  auto readTiny = host->clipboardText(std::span<char>(tiny.data(), tiny.size()));
+  PH_CHECK(!readTiny.has_value());
+  if (!readTiny.has_value()) {
+    PH_CHECK(readTiny.error().code == HostErrorCode::BufferTooSmall);
+  }
+}
+
 TEST_SUITE_END();
