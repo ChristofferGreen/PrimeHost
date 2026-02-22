@@ -250,6 +250,19 @@ inline FileDialogConfig openFileDialogConfig(Utf8TextView defaultPath = {}) {
   return config;
 }
 
+inline FileDialogConfig saveFileDialogConfig(Utf8TextView defaultPath = {},
+                                             Utf8TextView defaultName = {}) {
+  FileDialogConfig config{};
+  config.mode = FileDialogMode::SaveFile;
+  if (!defaultPath.empty()) {
+    config.defaultPath = defaultPath;
+  }
+  if (!defaultName.empty()) {
+    config.defaultName = defaultName;
+  }
+  return config;
+}
+
 struct FileDialogResult {
   bool accepted = false;
   Utf8TextView path;

@@ -115,6 +115,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - `defaultDirectoryOnly` treats `defaultPath` as a directory even when it points to a file.
 - Helper: `directoryDialogConfig(defaultPath)` configures directory-only selection.
 - Helper: `openFileDialogConfig(defaultPath)` configures a basic open-file dialog.
+- Helper: `saveFileDialogConfig(defaultPath, defaultName)` configures a basic save dialog.
 - Modes: open file, open directory, open (files + directories), save file.
 - `allowFiles`/`allowDirectories` override selection for `Open`.
 - Implemented: `fileDialog`, `fileDialogPaths` (macOS).
