@@ -1768,7 +1768,13 @@ HostResult<std::optional<std::chrono::nanoseconds>> HostMac::displayInterval(Sur
 
 HostStatus HostMac::setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSString* nsTitle = [[NSString alloc] initWithBytes:title.data()
@@ -1857,7 +1863,13 @@ HostStatus HostMac::setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y
 
 HostResult<SafeAreaInsets> HostMac::surfaceSafeAreaInsets(SurfaceId surfaceId) const {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->view) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return SafeAreaInsets{};
+  }
+  if (!surface->view) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   SafeAreaInsets insets{};
@@ -2004,7 +2016,13 @@ HostStatus HostMac::setSurfaceIcon(SurfaceId surfaceId, const WindowIcon& icon) 
 
 HostStatus HostMac::setSurfaceMinimized(SurfaceId surfaceId, bool minimized) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (minimized) {
@@ -2017,7 +2035,13 @@ HostStatus HostMac::setSurfaceMinimized(SurfaceId surfaceId, bool minimized) {
 
 HostStatus HostMac::setSurfaceMaximized(SurfaceId surfaceId, bool maximized) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (maximized == static_cast<bool>(surface->window.zoomed)) {
@@ -2029,7 +2053,13 @@ HostStatus HostMac::setSurfaceMaximized(SurfaceId surfaceId, bool maximized) {
 
 HostStatus HostMac::setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (fullscreen == static_cast<bool>(surface->window.styleMask & NSWindowStyleMaskFullScreen)) {
@@ -2666,7 +2696,13 @@ HostResult<float> HostMac::surfaceScale(SurfaceId surfaceId) const {
 
 HostStatus HostMac::setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint32_t height) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (width == 0u || height == 0u) {
@@ -2680,7 +2716,13 @@ HostStatus HostMac::setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint3
 
 HostStatus HostMac::setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint32_t height) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (width == 0u || height == 0u) {
