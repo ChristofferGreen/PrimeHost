@@ -344,6 +344,7 @@ public:
   HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
   HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
   HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) override;
+  HostResult<size_t> clipboardTextSize() const override;
   HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
   HostStatus setClipboardText(Utf8TextView text) override;
 
@@ -1250,6 +1251,16 @@ HostStatus HostMac::setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) {
   }
   [surface->window toggleFullScreen:nil];
   return {};
+}
+
+HostResult<size_t> HostMac::clipboardTextSize() const {
+  NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+  NSString* text = [pasteboard stringForType:NSPasteboardTypeString];
+  if (!text) {
+    return static_cast<size_t>(0u);
+  }
+  NSUInteger length = [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+  return static_cast<size_t>(length);
 }
 
 HostResult<Utf8TextView> HostMac::clipboardText(std::span<char> buffer) const {
