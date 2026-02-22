@@ -28,6 +28,7 @@
 #include "PrimeHost/FrameConfigValidation.h"
 #include "PrimeHost/FrameConfigUtil.h"
 #include "PrimeHost/FrameConfigDefaults.h"
+#include "PlatformInputUtil.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
@@ -3530,8 +3531,8 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   if (deviceType == PointerDeviceType::Pen && event) {
     pointer.pressure = static_cast<float>(event.pressure);
     NSPoint tilt = event.tilt;
-    pointer.tiltX = static_cast<float>(tilt.x);
-    pointer.tiltY = static_cast<float>(tilt.y);
+    pointer.tiltX = tiltNormalizedToDegrees(static_cast<float>(tilt.x));
+    pointer.tiltY = tiltNormalizedToDegrees(static_cast<float>(tilt.y));
     pointer.twist = static_cast<float>(event.rotation);
   }
   if (phase == PrimeHost::PointerPhase::Move) {
