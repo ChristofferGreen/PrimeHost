@@ -102,6 +102,13 @@ PH_TEST("primehost.clipboard_image", "size empty after text") {
     return;
   }
   PH_CHECK(!size.value().has_value());
+
+  std::array<uint8_t, 4> buffer{};
+  auto image = host->clipboardImage(buffer);
+  PH_CHECK(image.has_value());
+  if (image.has_value()) {
+    PH_CHECK(!image->available);
+  }
 }
 
 PH_TEST("primehost.clipboard_image", "buffer too small for image") {
