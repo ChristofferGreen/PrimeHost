@@ -14,6 +14,7 @@ platform-neutral and stable across backends.
 - `DisplayInfo`: display bounds, scale, refresh, and identity.
 - `PermissionType`, `PermissionStatus`: permission categories and states.
 - `AppPathType`: standard app path categories.
+- `FileDialogMode`, `FileDialogConfig`, `FileDialogResult`: native file dialog settings and results.
 - `LocaleInfo`: locale language/region tags.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
@@ -104,6 +105,10 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Default: text-only on platforms without richer formats.
 - Implemented: `clipboardTextSize`, `clipboardText`, `setClipboardText` (text-only).
 
+## File Dialogs (Draft)
+- Native open/save panels.
+- Implemented: `fileDialog` (macOS).
+
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
 - Defaults follow platform conventions (e.g., `~/Library`, `AppData`, `~/.config`).
@@ -166,6 +171,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
 - `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`, `surfaceScale`, `setSurfaceMinSize`, `setSurfaceMaxSize`
 - `Host::appPathSize`, `appPath`
+- `Host::fileDialog`
 - `Host::setGamepadRumble`
 - `Host::checkPermission`, `requestPermission`
 - `Host::beginIdleSleepInhibit`, `endIdleSleepInhibit`
@@ -200,7 +206,6 @@ for (const auto& evt : batch->events) {
   // ...
 }
 ```
-- Native file dialogs (draft).
 - Haptics for supported devices (draft).
 - Window icon updates (draft).
 - Offscreen/headless surfaces (draft).

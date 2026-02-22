@@ -114,6 +114,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_clipboard.cpp
     tests/unit/test_clipboard_size.cpp
     tests/unit/test_app_paths.cpp
+    tests/unit/test_file_dialogs.cpp
     tests/unit/test_surface_scale.cpp
     tests/unit/test_surface_constraints.cpp
     tests/unit/test_displays.cpp

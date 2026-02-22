@@ -121,6 +121,11 @@ enum class AppPathType {
   Config,
 };
 
+enum class FileDialogMode {
+  OpenFile,
+  SaveFile,
+};
+
 struct SurfaceCapabilities {
   bool supportsVsyncToggle = false;
   bool supportsTearing = false;
@@ -206,6 +211,17 @@ struct SurfaceSize {
 struct SurfacePoint {
   int32_t x = 0;
   int32_t y = 0;
+};
+
+struct FileDialogConfig {
+  FileDialogMode mode = FileDialogMode::OpenFile;
+  std::optional<Utf8TextView> title;
+  std::optional<Utf8TextView> defaultPath;
+};
+
+struct FileDialogResult {
+  bool accepted = false;
+  Utf8TextView path;
 };
 
 enum class PointerPhase {
@@ -408,6 +424,8 @@ public:
   virtual HostResult<size_t> clipboardTextSize() const = 0;
   virtual HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const = 0;
   virtual HostStatus setClipboardText(Utf8TextView text) = 0;
+  virtual HostResult<FileDialogResult> fileDialog(const FileDialogConfig& config,
+                                                   std::span<char> buffer) const = 0;
   virtual HostResult<size_t> appPathSize(AppPathType type) const = 0;
   virtual HostResult<Utf8TextView> appPath(AppPathType type, std::span<char> buffer) const = 0;
   virtual HostResult<float> surfaceScale(SurfaceId surfaceId) const = 0;
