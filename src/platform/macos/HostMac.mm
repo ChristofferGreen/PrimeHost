@@ -1563,6 +1563,16 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
 
+  NSString* nsTitle = nil;
+  if (config.title) {
+    nsTitle = [[NSString alloc] initWithBytes:config.title->data()
+                                       length:static_cast<NSUInteger>(config.title->size())
+                                     encoding:NSUTF8StringEncoding];
+    if (!nsTitle) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+  }
+
   if (config.headless) {
     auto state = std::make_unique<SurfaceState>();
     state->surfaceId = surfaceId;
@@ -1597,8 +1607,8 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
 
-  if (config.title) {
-    window.title = [NSString stringWithUTF8String:config.title->c_str()];
+  if (nsTitle) {
+    window.title = nsTitle;
   }
 
   PHHostView* view = [[PHHostView alloc] initWithFrame:rect];
