@@ -118,6 +118,27 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - `allowFiles`/`allowDirectories` override selection for `Open`.
 - Implemented: `fileDialog`, `fileDialogPaths` (macOS).
 
+Example (multi-select open):
+```cpp
+std::array<PrimeHost::TextSpan, 8> paths;
+std::array<char, 4096> pathBytes;
+PrimeHost::FileDialogConfig config{};
+config.mode = PrimeHost::FileDialogMode::Open;
+config.allowFiles = true;
+config.allowDirectories = false;
+PrimeHost::Utf8TextView txtExt{"txt"};
+config.allowedExtensions = std::span<const PrimeHost::Utf8TextView>(&txtExt, 1);
+
+auto result = host.fileDialogPaths(config, paths, pathBytes);
+if (result && result.value() > 0u) {
+  for (size_t i = 0; i < result.value(); ++i) {
+    const auto span = paths[i];
+    std::string_view path{pathBytes.data() + span.offset, span.length};
+    // use path
+  }
+}
+```
+
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
 - Defaults follow platform conventions (e.g., `~/Library`, `AppData`, `~/.config`).
