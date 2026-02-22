@@ -327,6 +327,15 @@ PH_TEST("primehost.clipboard_image", "set text after image") {
   } else {
     PH_CHECK(setText.has_value());
   }
+
+  auto textSize = host->clipboardTextSize();
+  if (!textSize.has_value()) {
+    PH_CHECK(textSize.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  if (textSize.value() == 0u) {
+    return;
+  }
 }
 
 PH_TEST("primehost.clipboard_image", "no image after text") {
