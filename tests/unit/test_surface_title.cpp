@@ -44,4 +44,31 @@ PH_TEST("primehost.surface", "create surface invalid title") {
   }
 }
 
+PH_TEST("primehost.surface", "set title empty view") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  SurfaceConfig config{};
+  config.width = 64u;
+  config.height = 64u;
+  auto surface = host->createSurface(config);
+  if (!surface.has_value()) {
+    bool allowed = surface.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || surface.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  Utf8TextView empty{};
+  auto status = host->setSurfaceTitle(surface.value(), empty);
+  PH_CHECK(status.has_value());
+
+  auto destroyed = host->destroySurface(surface.value());
+  PH_CHECK(destroyed.has_value());
+}
+
 TEST_SUITE_END();

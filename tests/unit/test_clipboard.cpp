@@ -229,4 +229,29 @@ PH_TEST("primehost.clipboard", "empty clipboard size") {
   }
 }
 
+PH_TEST("primehost.clipboard", "set empty view") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  Utf8TextView empty{};
+  auto status = host->setClipboardText(empty);
+  if (!status.has_value()) {
+    bool allowed = status.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || status.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto size = host->clipboardTextSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  PH_CHECK(size.value() == 0u);
+}
+
 TEST_SUITE_END();

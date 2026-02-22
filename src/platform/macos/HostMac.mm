@@ -1844,6 +1844,10 @@ HostStatus HostMac::setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) {
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
+  if (title.empty()) {
+    surface->window.title = @"";
+    return {};
+  }
   NSString* nsTitle = [[NSString alloc] initWithBytes:title.data()
                                                length:title.size()
                                              encoding:NSUTF8StringEncoding];
@@ -2205,9 +2209,14 @@ HostResult<Utf8TextView> HostMac::clipboardText(std::span<char> buffer) const {
 HostStatus HostMac::setClipboardText(Utf8TextView text) {
   NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
   [pasteboard clearContents];
-  NSString* nsText = [[NSString alloc] initWithBytes:text.data()
-                                             length:text.size()
-                                           encoding:NSUTF8StringEncoding];
+  NSString* nsText = nil;
+  if (text.empty()) {
+    nsText = @"";
+  } else {
+    nsText = [[NSString alloc] initWithBytes:text.data()
+                                      length:text.size()
+                                    encoding:NSUTF8StringEncoding];
+  }
   if (!nsText) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
@@ -3288,9 +3297,14 @@ HostStatus HostMac::updateTrayItemTitle(uint64_t trayId, Utf8TextView title) {
   if (it == trayItems_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
-  NSString* nsTitle = [[NSString alloc] initWithBytes:title.data()
-                                               length:static_cast<NSUInteger>(title.size())
-                                             encoding:NSUTF8StringEncoding];
+  NSString* nsTitle = nil;
+  if (title.empty()) {
+    nsTitle = @"";
+  } else {
+    nsTitle = [[NSString alloc] initWithBytes:title.data()
+                                       length:static_cast<NSUInteger>(title.size())
+                                     encoding:NSUTF8StringEncoding];
+  }
   if (!nsTitle) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
