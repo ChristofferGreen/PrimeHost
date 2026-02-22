@@ -80,6 +80,30 @@ PH_TEST("primehost.clipboard_image", "size query") {
   }
 }
 
+PH_TEST("primehost.clipboard_image", "size empty after text") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto setText = host->setClipboardText("");
+  if (!setText.has_value()) {
+    bool allowed = setText.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setText.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto size = host->clipboardImageSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  PH_CHECK(!size.value().has_value());
+}
+
 PH_TEST("primehost.clipboard_image", "buffer too small for image") {
   auto hostResult = createHost();
   if (!hostResult) {
