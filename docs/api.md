@@ -27,7 +27,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Enumerate displays/monitors.
 - Surface-to-display mapping when possible.
 - Refresh rate, DPI/scale, color space, and bounds.
-- Implemented: `displays`, `displayInfo`, `surfaceDisplay` (bounds/scale/refresh; assignment policies still draft).
+- Implemented: `displays`, `displayInfo`, `surfaceDisplay`, `setSurfaceDisplay` (bounds/scale/refresh; assignment policies still draft).
 
 ## Window Geometry (Draft)
 - Get/set window position and size in logical pixels (points).
@@ -149,6 +149,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::displays(span<DisplayInfo>) -> HostResult<size_t>`
 - `Host::displayInfo(displayId) -> HostResult<DisplayInfo>`
 - `Host::surfaceDisplay(surfaceId) -> HostResult<uint32_t>`
+- `Host::setSurfaceDisplay(surfaceId, displayId) -> HostStatus`
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`

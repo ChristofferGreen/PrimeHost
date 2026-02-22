@@ -299,6 +299,7 @@ public:
   virtual HostResult<size_t> displays(std::span<DisplayInfo> outDisplays) const = 0;
   virtual HostResult<DisplayInfo> displayInfo(uint32_t displayId) const = 0;
   virtual HostResult<uint32_t> surfaceDisplay(SurfaceId surfaceId) const = 0;
+  virtual HostStatus setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) = 0;
 
   virtual HostResult<SurfaceId> createSurface(const SurfaceConfig& config) = 0;
   virtual HostStatus destroySurface(SurfaceId surfaceId) = 0;

@@ -106,6 +106,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_surface_scale.cpp
     tests/unit/test_surface_constraints.cpp
     tests/unit/test_displays.cpp
+    tests/unit/test_surface_display.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp

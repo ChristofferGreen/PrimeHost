@@ -327,6 +327,7 @@ public:
   HostResult<size_t> displays(std::span<DisplayInfo> outDisplays) const override;
   HostResult<DisplayInfo> displayInfo(uint32_t displayId) const override;
   HostResult<uint32_t> surfaceDisplay(SurfaceId surfaceId) const override;
+  HostStatus setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) override;
 
   HostResult<SurfaceId> createSurface(const SurfaceConfig& config) override;
   HostStatus destroySurface(SurfaceId surfaceId) override;
@@ -1011,6 +1012,30 @@ HostResult<uint32_t> HostMac::surfaceDisplay(SurfaceId surfaceId) const {
     return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
   }
   return static_cast<uint32_t>(screenNumber.unsignedIntValue);
+}
+
+HostStatus HostMac::setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->window) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  NSScreen* targetScreen = nil;
+  for (NSScreen* screen in [NSScreen screens]) {
+    NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+    if (screenNumber && screenNumber.unsignedIntValue == displayId) {
+      targetScreen = screen;
+      break;
+    }
+  }
+  if (!targetScreen) {
+    return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+  }
+  NSRect frame = surface->window.frame;
+  NSRect visible = [targetScreen visibleFrame];
+  frame.origin.x = visible.origin.x + (visible.size.width - frame.size.width) * 0.5;
+  frame.origin.y = visible.origin.y + (visible.size.height - frame.size.height) * 0.5;
+  [surface->window setFrame:frame display:YES];
+  return {};
 }
 
 HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
