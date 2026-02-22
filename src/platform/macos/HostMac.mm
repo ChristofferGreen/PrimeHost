@@ -1821,7 +1821,13 @@ HostStatus HostMac::setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t
 
 HostResult<SurfacePoint> HostMac::surfacePosition(SurfaceId surfaceId) const {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return SurfacePoint{};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSRect frame = surface->window.frame;
@@ -1833,7 +1839,13 @@ HostResult<SurfacePoint> HostMac::surfacePosition(SurfaceId surfaceId) const {
 
 HostStatus HostMac::setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSRect frame = surface->window.frame;
