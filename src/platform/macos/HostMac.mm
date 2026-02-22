@@ -1708,7 +1708,10 @@ HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
 }
 
 HostResult<EventBatch> HostMac::pollEvents(const EventBuffer& buffer) {
-  if (buffer.events.data() == nullptr) {
+  if (buffer.events.empty() || buffer.events.data() == nullptr) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  if (!buffer.textBytes.empty() && buffer.textBytes.data() == nullptr) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   pumpEvents(false);
