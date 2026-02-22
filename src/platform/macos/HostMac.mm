@@ -3500,6 +3500,27 @@ HostStatus HostMac::setLogCallback(LogCallback callback) {
 HostStatus HostMac::setCallbacks(Callbacks callbacks) {
   callbacks_ = std::move(callbacks);
   updateDisplayLinkState();
+  if (callbacks_.onEvents && !eventQueue_.empty()) {
+    callbackEvents_.clear();
+    callbackText_.clear();
+    callbackEvents_.resize(eventQueue_.size());
+    size_t textBytes = 0u;
+    for (const auto& queued : eventQueue_) {
+      textBytes += queued.text.size();
+    }
+    if (textBytes > 0u) {
+      callbackText_.resize(textBytes);
+    }
+    EventBuffer buffer{
+        std::span<Event>(callbackEvents_.data(), callbackEvents_.size()),
+        std::span<char>(callbackText_.data(), callbackText_.size()),
+    };
+    auto batch = buildBatch(std::span<const QueuedEvent>(eventQueue_.data(), eventQueue_.size()), buffer);
+    if (batch) {
+      callbacks_.onEvents(*batch);
+      eventQueue_.clear();
+    }
+  }
   return {};
 }
 
