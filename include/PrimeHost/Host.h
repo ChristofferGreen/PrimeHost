@@ -457,6 +457,10 @@ struct DropEvent {
   TextSpan paths;
 };
 
+struct FocusEvent {
+  bool focused = false;
+};
+
 struct PowerEvent {
   std::optional<bool> lowPowerModeEnabled;
 };
@@ -487,7 +491,13 @@ struct Event {
   Scope scope = Scope::Surface;
   std::optional<SurfaceId> surfaceId;
   std::chrono::steady_clock::time_point time;
-  std::variant<InputEvent, ResizeEvent, DropEvent, PowerEvent, ThermalEvent, LifecycleEvent> payload;
+  std::variant<InputEvent,
+               ResizeEvent,
+               DropEvent,
+               FocusEvent,
+               PowerEvent,
+               ThermalEvent,
+               LifecycleEvent> payload;
 };
 
 struct EventBuffer {

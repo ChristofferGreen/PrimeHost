@@ -631,6 +631,7 @@ public:
   void handleKey(NSEvent* event, bool pressed, bool repeat);
   void handleModifiers(NSEvent* event);
   void handleText(uint64_t surfaceId, NSString* text);
+  void handleFocus(uint64_t surfaceId, bool focused);
   void handleWindowClosed(uint64_t surfaceId);
   void handleDisplayLinkTick();
   void handleDisplayLinkTick(uint64_t surfaceId, CADisplayLink* link);
@@ -751,6 +752,18 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
 - (void)windowDidResize:(NSNotification*)notification {
   if (self.host) {
     self.host->handleResize(self.surfaceId);
+  }
+}
+
+- (void)windowDidBecomeKey:(NSNotification*)notification {
+  if (self.host) {
+    self.host->handleFocus(self.surfaceId, true);
+  }
+}
+
+- (void)windowDidResignKey:(NSNotification*)notification {
+  if (self.host) {
+    self.host->handleFocus(self.surfaceId, false);
   }
 }
 
@@ -2983,6 +2996,22 @@ void HostMac::handleText(uint64_t surfaceId, NSString* text) {
   evt.time = std::chrono::steady_clock::now();
   evt.payload = textEvent;
   enqueueEvent(std::move(evt), std::move(utf8));
+}
+
+void HostMac::handleFocus(uint64_t surfaceId, bool focused) {
+  auto* surface = findSurface(surfaceId);
+  if (!surface) {
+    return;
+  }
+  FocusEvent focus{};
+  focus.focused = focused;
+
+  Event event{};
+  event.scope = Event::Scope::Surface;
+  event.surfaceId = surface->surfaceId;
+  event.time = std::chrono::steady_clock::now();
+  event.payload = focus;
+  enqueueEvent(std::move(event));
 }
 
 void HostMac::handleGamepadConnected(GCController* controller) {

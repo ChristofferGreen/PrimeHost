@@ -215,9 +215,10 @@ if (result && result->accepted) {
 - Implemented: `appPathSize`, `appPath` (macOS).
 
 ## Events
-- `Event`: tagged union of input, resize, drop, power/thermal, and lifecycle events.
+- `Event`: tagged union of input, resize, drop, focus, power/thermal, and lifecycle events.
 - `DeviceEvent`: connect/disconnect notification for input devices.
 - Input events: `PointerEvent`, `KeyEvent`, `TextEvent`, `ScrollEvent`, `GamepadButtonEvent`, `GamepadAxisEvent`.
+- Focus events: `FocusEvent` for surface activation changes.
 - Power events: `PowerEvent` (low power mode), `ThermalEvent` (thermal state changes).
 - Drop events: `DropEvent` with NUL-separated UTF-8 paths and a count.
 - All input events carry `deviceId`.
@@ -257,7 +258,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 }
 ```
 - Drag-and-drop file events (implemented on macOS).
-- Focus/activation events per surface (draft).
+- Focus/activation events per surface (implemented on macOS).
 
 ## Host Interface
 - `createHost() -> HostResult<std::unique_ptr<Host>>`
