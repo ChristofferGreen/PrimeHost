@@ -116,6 +116,31 @@ PH_TEST("primehost.clipboard", "size matches long text") {
   }
 }
 
+PH_TEST("primehost.clipboard", "buffer too small for long text") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::string text(128, 'B');
+  auto setStatus = host->setClipboardText(text);
+  if (!setStatus.has_value()) {
+    bool allowed = setStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  std::array<char, 4> small{};
+  auto read = host->clipboardText(small);
+  PH_CHECK(!read.has_value());
+  if (!read.has_value()) {
+    PH_CHECK(read.error().code == HostErrorCode::BufferTooSmall);
+  }
+}
+
 PH_TEST("primehost.clipboard", "empty clipboard size") {
   auto hostResult = createHost();
   if (!hostResult) {
