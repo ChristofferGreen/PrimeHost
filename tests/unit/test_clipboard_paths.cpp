@@ -62,4 +62,20 @@ PH_TEST("primehost.clipboard_paths", "buffer too small for paths") {
   }
 }
 
+PH_TEST("primehost.clipboard_paths", "text size query") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto size = host->clipboardPathsTextSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  PH_CHECK(size.value() >= 0u);
+}
+
 TEST_SUITE_END();
