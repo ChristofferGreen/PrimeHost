@@ -16,6 +16,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <UserNotifications/UserNotifications.h>
 #import <dispatch/dispatch.h>
 
 #include "PrimeHost/Host.h"
@@ -142,6 +143,21 @@ PermissionStatus map_av_status(AVAuthorizationStatus status) {
     case AVAuthorizationStatusRestricted:
       return PermissionStatus::Restricted;
     case AVAuthorizationStatusNotDetermined:
+    default:
+      return PermissionStatus::Unknown;
+  }
+}
+
+PermissionStatus map_notification_status(UNAuthorizationStatus status) {
+  switch (status) {
+    case UNAuthorizationStatusAuthorized:
+      return PermissionStatus::Granted;
+    case UNAuthorizationStatusDenied:
+      return PermissionStatus::Denied;
+    case UNAuthorizationStatusNotDetermined:
+      return PermissionStatus::Unknown;
+    case UNAuthorizationStatusProvisional:
+      return PermissionStatus::Granted;
     default:
       return PermissionStatus::Unknown;
   }
@@ -1614,9 +1630,25 @@ HostResult<PermissionStatus> HostMac::checkPermission(PermissionType type) const
       AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
       return map_av_status(status);
     }
+    case PermissionType::Notifications:
+      if (@available(macOS 10.14, *)) {
+        NSBundle* bundle = [NSBundle mainBundle];
+        if (!bundle || !bundle.bundleIdentifier) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        __block UNAuthorizationStatus status = UNAuthorizationStatusNotDetermined;
+        [[UNUserNotificationCenter currentNotificationCenter]
+            getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings* settings) {
+              status = settings.authorizationStatus;
+              dispatch_semaphore_signal(semaphore);
+            }];
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        return map_notification_status(status);
+      }
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Location:
     case PermissionType::Photos:
-    case PermissionType::Notifications:
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
   }
@@ -1631,9 +1663,33 @@ HostResult<PermissionStatus> HostMac::requestPermission(PermissionType type) {
     case PermissionType::Microphone:
       mediaType = AVMediaTypeAudio;
       break;
+    case PermissionType::Notifications:
+      if (@available(macOS 10.14, *)) {
+        NSBundle* bundle = [NSBundle mainBundle];
+        if (!bundle || !bundle.bundleIdentifier) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        __block bool granted = false;
+        __block NSError* nsError = nil;
+        [[UNUserNotificationCenter currentNotificationCenter]
+            requestAuthorizationWithOptions:(UNAuthorizationOptionAlert |
+                                             UNAuthorizationOptionSound |
+                                             UNAuthorizationOptionBadge)
+                          completionHandler:^(BOOL ok, NSError* error) {
+                            granted = ok;
+                            nsError = error;
+                            dispatch_semaphore_signal(semaphore);
+                          }];
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        if (nsError) {
+          return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+        }
+        return granted ? PermissionStatus::Granted : PermissionStatus::Denied;
+      }
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Location:
     case PermissionType::Photos:
-    case PermissionType::Notifications:
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
   }

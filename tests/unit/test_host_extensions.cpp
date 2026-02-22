@@ -25,7 +25,18 @@ PH_TEST("primehost.extensions", "permission and locale queries") {
     PH_CHECK(permission.error().code == HostErrorCode::Unsupported);
   }
 
-  auto request = host->requestPermission(PermissionType::Notifications);
+  auto notify = host->checkPermission(PermissionType::Notifications);
+  if (notify) {
+    bool allowed = notify.value() == PermissionStatus::Unknown;
+    allowed = allowed || notify.value() == PermissionStatus::Granted;
+    allowed = allowed || notify.value() == PermissionStatus::Denied;
+    allowed = allowed || notify.value() == PermissionStatus::Restricted;
+    PH_CHECK(allowed);
+  } else {
+    PH_CHECK(notify.error().code == HostErrorCode::Unsupported);
+  }
+
+  auto request = host->requestPermission(PermissionType::Photos);
   PH_CHECK(!request.has_value());
   if (!request.has_value()) {
     PH_CHECK(request.error().code == HostErrorCode::Unsupported);

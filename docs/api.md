@@ -58,9 +58,9 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Default: HDR disabled unless explicitly enabled per surface or display.
 
 ## Permissions (Draft)
-- Camera/microphone/location permission queries and requests.
+- Camera/microphone/location/notifications permission queries and requests.
 - Default: unknown until queried; platforms may require prompts.
-- Implemented: `checkPermission`, `requestPermission` for camera/microphone on macOS.
+- Implemented: `checkPermission`, `requestPermission` for camera/microphone/notifications on macOS.
 
 ## Idle Sleep / Screensaver (Draft)
 - Inhibit idle sleep or screensaver while critical work is active.

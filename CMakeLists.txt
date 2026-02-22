@@ -68,6 +68,7 @@ if(APPLE)
   find_library(COREHAPTICS_LIBRARY CoreHaptics)
   find_library(IOKIT_LIBRARY IOKit)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
+  find_library(USERNOTIFICATIONS_LIBRARY UserNotifications)
   target_link_libraries(PrimeHost PRIVATE
     ${AVFOUNDATION_LIBRARY}
     ${CARBON_LIBRARY}
@@ -81,6 +82,7 @@ if(APPLE)
     ${COREHAPTICS_LIBRARY}
     ${IOKIT_LIBRARY}
     ${QUARTZCORE_LIBRARY}
+    ${USERNOTIFICATIONS_LIBRARY}
   )
   if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(src/platform/macos/HostMac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
