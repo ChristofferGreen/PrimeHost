@@ -84,6 +84,38 @@ PH_TEST("primehost.clipboard", "text size and read") {
   }
 }
 
+PH_TEST("primehost.clipboard", "size matches long text") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::string text(256, 'A');
+  auto setStatus = host->setClipboardText(text);
+  if (!setStatus.has_value()) {
+    bool allowed = setStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto size = host->clipboardTextSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  PH_CHECK(size.value() == text.size());
+
+  std::vector<char> buffer(size.value());
+  auto read = host->clipboardText(buffer);
+  PH_CHECK(read.has_value());
+  if (read.has_value()) {
+    PH_CHECK(read->size() == text.size());
+  }
+}
+
 PH_TEST("primehost.clipboard", "empty clipboard size") {
   auto hostResult = createHost();
   if (!hostResult) {
