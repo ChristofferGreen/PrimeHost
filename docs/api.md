@@ -153,6 +153,17 @@ if (result && result->accepted) {
 }
 ```
 
+Example (directory-only):
+```cpp
+PrimeHost::FileDialogConfig config = PrimeHost::directoryDialogConfig("/tmp");
+std::array<char, 1024> pathBytes;
+auto result = host.fileDialog(config, pathBytes);
+if (result && result->accepted) {
+  std::string_view directory{result->path.data(), result->path.size()};
+  // use directory
+}
+```
+
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
 - Defaults follow platform conventions (e.g., `~/Library`, `AppData`, `~/.config`).
