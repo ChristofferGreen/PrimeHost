@@ -50,4 +50,45 @@ PH_TEST("primehost.cursor_image", "buffer too small") {
   }
 }
 
+PH_TEST("primehost.cursor_image", "invalid config") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  SurfaceConfig config{};
+  config.width = 64u;
+  config.height = 48u;
+  auto surface = host->createSurface(config);
+  if (!surface.has_value()) {
+    bool allowed = surface.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || surface.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  CursorImage empty{};
+  auto emptyStatus = host->setCursorImage(surface.value(), empty);
+  PH_CHECK(!emptyStatus.has_value());
+  if (!emptyStatus.has_value()) {
+    PH_CHECK(emptyStatus.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  std::array<uint8_t, 3> tooSmall = {0u, 0u, 0u};
+  CursorImage small{};
+  small.width = 1u;
+  small.height = 1u;
+  small.pixels = tooSmall;
+  auto smallStatus = host->setCursorImage(surface.value(), small);
+  PH_CHECK(!smallStatus.has_value());
+  if (!smallStatus.has_value()) {
+    PH_CHECK(smallStatus.error().code == HostErrorCode::BufferTooSmall);
+  }
+
+  auto destroyed = host->destroySurface(surface.value());
+  PH_CHECK(destroyed.has_value());
+}
+
 TEST_SUITE_END();
