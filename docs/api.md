@@ -108,6 +108,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## File Dialogs (Draft)
 - Native open/save panels.
 - Optional file extension filters via `FileDialogConfig::allowedExtensions`.
+- Optional UTType identifier filters via `FileDialogConfig::allowedContentTypes`.
 - Optional default filename via `FileDialogConfig::defaultName`.
 - `canCreateDirectories` controls save panel directory creation.
 - `canSelectHiddenFiles` reveals hidden items where supported.

@@ -236,6 +236,31 @@ HostResult<NSArray<UTType*>*> allowed_content_types(std::span<const Utf8TextView
   return types;
 }
 
+HostResult<NSArray<UTType*>*> content_types_from_identifiers(std::span<const Utf8TextView> identifiers) {
+  if (identifiers.empty()) {
+    return (NSArray<UTType*>*)nil;
+  }
+  NSMutableArray<UTType*>* types = [NSMutableArray arrayWithCapacity:identifiers.size()];
+  for (const auto& entry : identifiers) {
+    if (entry.empty()) {
+      continue;
+    }
+    NSString* value = utf8_to_nsstring(entry);
+    if (!value) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    UTType* type = [UTType typeWithIdentifier:value];
+    if (!type) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    [types addObject:type];
+  }
+  if (types.count == 0) {
+    return (NSArray<UTType*>*)nil;
+  }
+  return types;
+}
+
 PermissionStatus map_av_status(AVAuthorizationStatus status) {
   switch (status) {
     case AVAuthorizationStatusAuthorized:
@@ -1752,11 +1777,16 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (!allowFiles && !allowDirectories) {
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
     }
+    if (!config.allowedExtensions.empty() && !config.allowedContentTypes.empty()) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
     auto allowedTypes = allowed_file_types(config.allowedExtensions);
     if (!allowedTypes) {
       return std::unexpected(allowedTypes.error());
     }
-    auto contentTypes = allowed_content_types(config.allowedExtensions);
+    auto contentTypes = config.allowedContentTypes.empty()
+                            ? allowed_content_types(config.allowedExtensions)
+                            : content_types_from_identifiers(config.allowedContentTypes);
     if (!contentTypes) {
       return std::unexpected(contentTypes.error());
     }
@@ -1789,7 +1819,7 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
         }
       }
     } else {
-      if (!config.allowedExtensions.empty()) {
+      if (!config.allowedExtensions.empty() || !config.allowedContentTypes.empty()) {
         return std::unexpected(HostError{HostErrorCode::InvalidConfig});
       }
     }
@@ -1827,11 +1857,16 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
   }
 
   if (config.mode == FileDialogMode::SaveFile) {
+    if (!config.allowedExtensions.empty() && !config.allowedContentTypes.empty()) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
     auto allowedTypes = allowed_file_types(config.allowedExtensions);
     if (!allowedTypes) {
       return std::unexpected(allowedTypes.error());
     }
-    auto contentTypes = allowed_content_types(config.allowedExtensions);
+    auto contentTypes = config.allowedContentTypes.empty()
+                            ? allowed_content_types(config.allowedExtensions)
+                            : content_types_from_identifiers(config.allowedContentTypes);
     if (!contentTypes) {
       return std::unexpected(contentTypes.error());
     }

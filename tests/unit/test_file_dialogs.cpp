@@ -63,6 +63,27 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
     PH_CHECK(invalid.error().code == HostErrorCode::InvalidConfig);
   }
 
+  FileDialogConfig badTypes{};
+  badTypes.allowedContentTypes = std::span<const Utf8TextView>(&badView, 1u);
+  auto invalidTypes = host->fileDialogPaths(badTypes, spans, okBuffer);
+  PH_CHECK(!invalidTypes.has_value());
+  if (!invalidTypes.has_value()) {
+    PH_CHECK(invalidTypes.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  const char typeBytes[] = "public.data";
+  Utf8TextView typeView{typeBytes, sizeof(typeBytes) - 1u};
+  const char extBytes[] = "txt";
+  Utf8TextView extView{extBytes, sizeof(extBytes) - 1u};
+  FileDialogConfig bothFilters{};
+  bothFilters.allowedContentTypes = std::span<const Utf8TextView>(&typeView, 1u);
+  bothFilters.allowedExtensions = std::span<const Utf8TextView>(&extView, 1u);
+  auto invalidBoth = host->fileDialogPaths(bothFilters, spans, okBuffer);
+  PH_CHECK(!invalidBoth.has_value());
+  if (!invalidBoth.has_value()) {
+    PH_CHECK(invalidBoth.error().code == HostErrorCode::InvalidConfig);
+  }
+
   FileDialogConfig badName{};
   badName.defaultName = badView;
   auto invalidName = host->fileDialogPaths(badName, spans, okBuffer);
@@ -100,6 +121,15 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
   PH_CHECK(!invalidDirResult.has_value());
   if (!invalidDirResult.has_value()) {
     PH_CHECK(invalidDirResult.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  FileDialogConfig invalidDirTypes{};
+  invalidDirTypes.mode = FileDialogMode::OpenDirectory;
+  invalidDirTypes.allowedContentTypes = std::span<const Utf8TextView>(&typeView, 1u);
+  auto invalidDirTypesResult = host->fileDialogPaths(invalidDirTypes, spans, okBuffer);
+  PH_CHECK(!invalidDirTypesResult.has_value());
+  if (!invalidDirTypesResult.has_value()) {
+    PH_CHECK(invalidDirTypesResult.error().code == HostErrorCode::InvalidConfig);
   }
 }
 

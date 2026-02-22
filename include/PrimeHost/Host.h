@@ -223,6 +223,7 @@ struct FileDialogConfig {
   std::optional<Utf8TextView> defaultPath;
   std::optional<Utf8TextView> defaultName;
   std::span<const Utf8TextView> allowedExtensions;
+  std::span<const Utf8TextView> allowedContentTypes;
   bool canCreateDirectories = true;
   bool canSelectHiddenFiles = false;
   std::optional<bool> allowFiles;
