@@ -69,9 +69,15 @@ PH_TEST("primehost.frameconfig", "set config invalid values") {
   FrameConfig noVsync{};
   noVsync.vsync = false;
   auto statusVsync = host->setFrameConfig(surface.value(), noVsync);
-  PH_CHECK(!statusVsync.has_value());
-  if (!statusVsync.has_value()) {
-    PH_CHECK(statusVsync.error().code == HostErrorCode::InvalidConfig);
+  auto caps = host->surfaceCapabilities(surface.value());
+  PH_CHECK(caps.has_value());
+  if (caps && caps->supportsVsyncToggle) {
+    PH_CHECK(statusVsync.has_value());
+  } else {
+    PH_CHECK(!statusVsync.has_value());
+    if (!statusVsync.has_value()) {
+      PH_CHECK(statusVsync.error().code == HostErrorCode::InvalidConfig);
+    }
   }
 
   FrameConfig capped{};

@@ -447,6 +447,9 @@ void apply_layer_config(SurfaceState& surface, const SurfaceCapabilities& caps) 
   uint32_t bufferCount = effectiveBufferCount(surface.frameConfig, caps);
   if (@available(macOS 10.13, *)) {
     surface.layer.maximumDrawableCount = static_cast<NSUInteger>(bufferCount);
+    if (caps.supportsVsyncToggle) {
+      surface.layer.displaySyncEnabled = surface.frameConfig.vsync;
+    }
   }
 }
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {
@@ -1442,7 +1445,11 @@ HostResult<SurfaceCapabilities> HostMac::surfaceCapabilities(SurfaceId surfaceId
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   SurfaceCapabilities caps{};
-  caps.supportsVsyncToggle = false;
+  if (@available(macOS 10.13, *)) {
+    caps.supportsVsyncToggle = true;
+  } else {
+    caps.supportsVsyncToggle = false;
+  }
   caps.supportsTearing = false;
   caps.minBufferCount = 2u;
   caps.maxBufferCount = 3u;
