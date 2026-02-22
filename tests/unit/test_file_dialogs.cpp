@@ -80,6 +80,27 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
   if (!saveResult.has_value()) {
     PH_CHECK(saveResult.error().code == HostErrorCode::BufferTooSmall);
   }
+
+  FileDialogConfig invalidOpen{};
+  invalidOpen.mode = FileDialogMode::Open;
+  invalidOpen.allowFiles = false;
+  invalidOpen.allowDirectories = false;
+  auto invalidOpenResult = host->fileDialogPaths(invalidOpen, spans, okBuffer);
+  PH_CHECK(!invalidOpenResult.has_value());
+  if (!invalidOpenResult.has_value()) {
+    PH_CHECK(invalidOpenResult.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  const char dirBytes[] = {'.'};
+  Utf8TextView dirExt{dirBytes, 1u};
+  FileDialogConfig invalidDir{};
+  invalidDir.mode = FileDialogMode::OpenDirectory;
+  invalidDir.allowedExtensions = std::span<const Utf8TextView>(&dirExt, 1u);
+  auto invalidDirResult = host->fileDialogPaths(invalidDir, spans, okBuffer);
+  PH_CHECK(!invalidDirResult.has_value());
+  if (!invalidDirResult.has_value()) {
+    PH_CHECK(invalidDirResult.error().code == HostErrorCode::InvalidConfig);
+  }
 }
 
 TEST_SUITE_END();

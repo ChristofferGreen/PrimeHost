@@ -126,6 +126,7 @@ enum class AppPathType {
 enum class FileDialogMode {
   OpenFile,
   OpenDirectory,
+  Open,
   SaveFile,
 };
 
@@ -224,6 +225,8 @@ struct FileDialogConfig {
   std::span<const Utf8TextView> allowedExtensions;
   bool canCreateDirectories = true;
   bool canSelectHiddenFiles = false;
+  std::optional<bool> allowFiles;
+  std::optional<bool> allowDirectories;
 };
 
 struct FileDialogResult {

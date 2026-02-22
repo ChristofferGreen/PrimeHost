@@ -1737,7 +1737,21 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       (config.defaultName && !defaultName)) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
-  if (config.mode == FileDialogMode::OpenFile) {
+  if (config.mode == FileDialogMode::Open ||
+      config.mode == FileDialogMode::OpenFile ||
+      config.mode == FileDialogMode::OpenDirectory) {
+    bool allowFiles = config.allowFiles.value_or(config.mode != FileDialogMode::OpenDirectory);
+    bool allowDirectories = config.allowDirectories.value_or(config.mode == FileDialogMode::OpenDirectory);
+    if (config.mode == FileDialogMode::OpenFile) {
+      allowFiles = true;
+      allowDirectories = false;
+    } else if (config.mode == FileDialogMode::OpenDirectory) {
+      allowFiles = false;
+      allowDirectories = true;
+    }
+    if (!allowFiles && !allowDirectories) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
     auto allowedTypes = allowed_file_types(config.allowedExtensions);
     if (!allowedTypes) {
       return std::unexpected(allowedTypes.error());
@@ -1747,8 +1761,8 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       return std::unexpected(contentTypes.error());
     }
     NSOpenPanel* panel = [NSOpenPanel openPanel];
-    panel.canChooseFiles = YES;
-    panel.canChooseDirectories = NO;
+    panel.canChooseFiles = allowFiles ? YES : NO;
+    panel.canChooseDirectories = allowDirectories ? YES : NO;
     panel.allowsMultipleSelection = (outPaths.size() > 1u);
     panel.showsHiddenFiles = config.canSelectHiddenFiles ? YES : NO;
     if (title) {
@@ -1758,66 +1772,26 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       NSURL* url = [NSURL fileURLWithPath:defaultPath];
       panel.directoryURL = url;
     }
-    if (defaultName) {
+    if (defaultName && allowFiles && !allowDirectories) {
       panel.nameFieldStringValue = defaultName;
     }
-    if (@available(macOS 12.0, *)) {
-      if (contentTypes.value()) {
-        panel.allowedContentTypes = contentTypes.value();
-      }
-    } else {
-      if (allowedTypes.value()) {
+    if (allowFiles && !allowDirectories) {
+      if (@available(macOS 12.0, *)) {
+        if (contentTypes.value()) {
+          panel.allowedContentTypes = contentTypes.value();
+        }
+      } else {
+        if (allowedTypes.value()) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        panel.allowedFileTypes = allowedTypes.value();
+          panel.allowedFileTypes = allowedTypes.value();
 #pragma clang diagnostic pop
+        }
       }
-    }
-    NSInteger modal = [panel runModal];
-    if (modal != NSModalResponseOK) {
-      if (!buffer.empty()) {
-        buffer[0] = '\0';
+    } else {
+      if (!config.allowedExtensions.empty()) {
+        return std::unexpected(HostError{HostErrorCode::InvalidConfig});
       }
-      return static_cast<size_t>(0u);
-    }
-    NSArray<NSURL*>* urls = panel.URLs;
-    if (!urls) {
-      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
-    }
-    if (static_cast<size_t>(urls.count) > outPaths.size()) {
-      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
-    }
-    size_t offset = 0u;
-    for (NSUInteger i = 0; i < urls.count; ++i) {
-      NSURL* url = urls[i];
-      NSString* path = url.path;
-      NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
-      if (!data) {
-        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
-      }
-      if (offset + data.length > buffer.size()) {
-        return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
-      }
-      std::memcpy(buffer.data() + offset, data.bytes, data.length);
-      outPaths[i] = TextSpan{static_cast<uint32_t>(offset),
-                             static_cast<uint32_t>(data.length)};
-      offset += static_cast<size_t>(data.length);
-    }
-    return static_cast<size_t>(urls.count);
-  }
-
-  if (config.mode == FileDialogMode::OpenDirectory) {
-    NSOpenPanel* panel = [NSOpenPanel openPanel];
-    panel.canChooseFiles = NO;
-    panel.canChooseDirectories = YES;
-    panel.allowsMultipleSelection = (outPaths.size() > 1u);
-    panel.showsHiddenFiles = config.canSelectHiddenFiles ? YES : NO;
-    if (title) {
-      panel.title = title;
-    }
-    if (defaultPath) {
-      NSURL* url = [NSURL fileURLWithPath:defaultPath];
-      panel.directoryURL = url;
     }
     NSInteger modal = [panel runModal];
     if (modal != NSModalResponseOK) {
