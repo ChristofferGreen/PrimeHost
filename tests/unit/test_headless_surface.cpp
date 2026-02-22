@@ -102,6 +102,12 @@ PH_TEST("primehost.headless", "create and size") {
   auto imeRect = host->setImeCompositionRect(surface.value(), 5, 6, 7, 8);
   PH_CHECK(imeRect.has_value());
 
+  auto badDisplay = host->setSurfaceDisplay(surface.value(), 0u);
+  PH_CHECK(!badDisplay.has_value());
+  if (!badDisplay.has_value()) {
+    PH_CHECK(badDisplay.error().code == HostErrorCode::InvalidDisplay);
+  }
+
   auto displayCount = host->displays({});
   PH_CHECK(displayCount.has_value());
   if (displayCount && displayCount.value() > 0u) {
