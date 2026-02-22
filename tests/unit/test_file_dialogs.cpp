@@ -43,6 +43,17 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
   if (!multiEmpty.has_value()) {
     PH_CHECK(multiEmpty.error().code == HostErrorCode::BufferTooSmall);
   }
+
+  const char badBytes[] = {static_cast<char>(0xFF)};
+  Utf8TextView badView{badBytes, 1u};
+  FileDialogConfig badConfig{};
+  badConfig.allowedExtensions = std::span<const Utf8TextView>(&badView, 1u);
+  std::array<char, 16> okBuffer{};
+  auto invalid = host->fileDialogPaths(badConfig, spans, okBuffer);
+  PH_CHECK(!invalid.has_value());
+  if (!invalid.has_value()) {
+    PH_CHECK(invalid.error().code == HostErrorCode::InvalidConfig);
+  }
 }
 
 TEST_SUITE_END();

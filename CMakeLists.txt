@@ -70,6 +70,7 @@ if(APPLE)
   find_library(COREHAPTICS_LIBRARY CoreHaptics)
   find_library(IOKIT_LIBRARY IOKit)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
+  find_library(UNIFORMTYPEIDS_LIBRARY UniformTypeIdentifiers)
   find_library(USERNOTIFICATIONS_LIBRARY UserNotifications)
   target_link_libraries(PrimeHost PRIVATE
     ${AVFOUNDATION_LIBRARY}
@@ -86,6 +87,7 @@ if(APPLE)
     ${COREHAPTICS_LIBRARY}
     ${IOKIT_LIBRARY}
     ${QUARTZCORE_LIBRARY}
+    ${UNIFORMTYPEIDS_LIBRARY}
     ${USERNOTIFICATIONS_LIBRARY}
   )
   if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")

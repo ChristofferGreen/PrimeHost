@@ -18,6 +18,7 @@
 #import <Photos/Photos.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <UniformTypeIdentifiers/UTType.h>
 #import <UserNotifications/UserNotifications.h>
 #import <dispatch/dispatch.h>
 
@@ -187,6 +188,52 @@ NSString* utf8_to_nsstring(Utf8TextView text) {
   return [[NSString alloc] initWithBytes:text.data()
                                   length:static_cast<NSUInteger>(text.size())
                                 encoding:NSUTF8StringEncoding];
+}
+
+HostResult<NSArray<NSString*>*> allowed_file_types(std::span<const Utf8TextView> extensions) {
+  if (extensions.empty()) {
+    return (NSArray<NSString*>*)nil;
+  }
+  NSMutableArray<NSString*>* types = [NSMutableArray arrayWithCapacity:extensions.size()];
+  for (const auto& ext : extensions) {
+    if (ext.empty()) {
+      continue;
+    }
+    NSString* value = utf8_to_nsstring(ext);
+    if (!value) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    [types addObject:value];
+  }
+  if (types.count == 0) {
+    return (NSArray<NSString*>*)nil;
+  }
+  return types;
+}
+
+HostResult<NSArray<UTType*>*> allowed_content_types(std::span<const Utf8TextView> extensions) {
+  if (extensions.empty()) {
+    return (NSArray<UTType*>*)nil;
+  }
+  NSMutableArray<UTType*>* types = [NSMutableArray arrayWithCapacity:extensions.size()];
+  for (const auto& ext : extensions) {
+    if (ext.empty()) {
+      continue;
+    }
+    NSString* value = utf8_to_nsstring(ext);
+    if (!value) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    UTType* type = [UTType typeWithFilenameExtension:value];
+    if (!type) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    [types addObject:type];
+  }
+  if (types.count == 0) {
+    return (NSArray<UTType*>*)nil;
+  }
+  return types;
 }
 
 PermissionStatus map_av_status(AVAuthorizationStatus status) {
@@ -1688,6 +1735,14 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
   if ((config.title && !title) || (config.defaultPath && !defaultPath)) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
+  auto allowedTypes = allowed_file_types(config.allowedExtensions);
+  if (!allowedTypes) {
+    return std::unexpected(allowedTypes.error());
+  }
+  auto contentTypes = allowed_content_types(config.allowedExtensions);
+  if (!contentTypes) {
+    return std::unexpected(contentTypes.error());
+  }
 
   if (config.mode == FileDialogMode::OpenFile) {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
@@ -1700,6 +1755,18 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (defaultPath) {
       NSURL* url = [NSURL fileURLWithPath:defaultPath];
       panel.directoryURL = url;
+    }
+    if (@available(macOS 12.0, *)) {
+      if (contentTypes.value()) {
+        panel.allowedContentTypes = contentTypes.value();
+      }
+    } else {
+      if (allowedTypes.value()) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        panel.allowedFileTypes = allowedTypes.value();
+#pragma clang diagnostic pop
+      }
     }
     NSInteger modal = [panel runModal];
     if (modal != NSModalResponseOK) {
@@ -1747,6 +1814,18 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       } else {
         panel.directoryURL = [url URLByDeletingLastPathComponent];
         panel.nameFieldStringValue = url.lastPathComponent;
+      }
+    }
+    if (@available(macOS 12.0, *)) {
+      if (contentTypes.value()) {
+        panel.allowedContentTypes = contentTypes.value();
+      }
+    } else {
+      if (allowedTypes.value()) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        panel.allowedFileTypes = allowedTypes.value();
+#pragma clang diagnostic pop
       }
     }
     NSInteger modal = [panel runModal];
