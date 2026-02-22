@@ -1750,6 +1750,7 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
   if (!callbacks_.onFrame) {
     auto now = std::chrono::steady_clock::now();
     if (!shouldPresent(surface->frameConfig.framePolicy,
+                       surface->frameConfig.framePacingSource,
                        bypassCap,
                        surface->frameConfig.frameInterval,
                        surface->lastFrameTime,
@@ -1762,6 +1763,7 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
 
   auto now = std::chrono::steady_clock::now();
   if (!shouldPresent(surface->frameConfig.framePolicy,
+                     surface->frameConfig.framePacingSource,
                      bypassCap,
                      surface->frameConfig.frameInterval,
                      surface->lastFrameTime,

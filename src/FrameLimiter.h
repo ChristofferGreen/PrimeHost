@@ -24,11 +24,15 @@ inline bool shouldPresentCapped(bool bypassCap,
 }
 
 inline bool shouldPresent(FramePolicy policy,
+                          FramePacingSource source,
                           bool bypassCap,
                           std::optional<std::chrono::nanoseconds> interval,
                           std::optional<std::chrono::steady_clock::time_point> last,
                           std::chrono::steady_clock::time_point now) {
   if (policy != FramePolicy::Capped) {
+    return true;
+  }
+  if (source == FramePacingSource::Platform) {
     return true;
   }
   return shouldPresentCapped(bypassCap, interval, last, now);
