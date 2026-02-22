@@ -82,6 +82,7 @@ struct SurfaceState {
   NSCursor* customCursor = nullptr;
   bool headless = false;
   SurfaceSize headlessSize{};
+  uint32_t headlessDisplayId = 0u;
   uint64_t frameIndex = 0u;
   std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
   std::optional<std::chrono::nanoseconds> displayInterval{};
@@ -1469,7 +1470,16 @@ HostResult<DisplayHdrInfo> HostMac::displayHdrInfo(uint32_t displayId) const {
 
 HostResult<uint32_t> HostMac::surfaceDisplay(SurfaceId surfaceId) const {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    if (surface->headlessDisplayId == 0u) {
+      return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+    }
+    return surface->headlessDisplayId;
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSScreen* screen = surface->window.screen;
@@ -1485,7 +1495,25 @@ HostResult<uint32_t> HostMac::surfaceDisplay(SurfaceId surfaceId) const {
 
 HostStatus HostMac::setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    NSScreen* targetScreen = nil;
+    for (NSScreen* screen in [NSScreen screens]) {
+      NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+      if (screenNumber && screenNumber.unsignedIntValue == displayId) {
+        targetScreen = screen;
+        break;
+      }
+    }
+    if (!targetScreen) {
+      return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+    }
+    surface->headlessDisplayId = displayId;
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSScreen* targetScreen = nil;
@@ -1519,6 +1547,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
     state->surfaceId = surfaceId;
     state->headless = true;
     state->headlessSize = SurfaceSize{config.width, config.height};
+    state->headlessDisplayId = static_cast<uint32_t>(CGMainDisplayID());
     surfaces_.emplace(surfaceId.value, std::move(state));
 
     Event created{};

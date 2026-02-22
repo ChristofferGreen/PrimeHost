@@ -3,6 +3,7 @@
 #include "tests/unit/test_helpers.h"
 
 #include <array>
+#include <vector>
 
 using namespace PrimeHost;
 
@@ -97,6 +98,23 @@ PH_TEST("primehost.headless", "create and size") {
   PH_CHECK(relativeOn.has_value());
   auto relativeOff = host->setRelativePointerCapture(surface.value(), false);
   PH_CHECK(relativeOff.has_value());
+
+  auto displayCount = host->displays({});
+  PH_CHECK(displayCount.has_value());
+  if (displayCount && displayCount.value() > 0u) {
+    std::vector<DisplayInfo> displays(displayCount.value());
+    auto fillDisplays = host->displays(displays);
+    PH_CHECK(fillDisplays.has_value());
+    if (fillDisplays && !displays.empty()) {
+      auto setDisplay = host->setSurfaceDisplay(surface.value(), displays[0].displayId);
+      PH_CHECK(setDisplay.has_value());
+      auto getDisplay = host->surfaceDisplay(surface.value());
+      PH_CHECK(getDisplay.has_value());
+      if (getDisplay) {
+        PH_CHECK(getDisplay.value() == displays[0].displayId);
+      }
+    }
+  }
 
   auto status = host->setSurfaceSize(surface.value(), 128u, 256u);
   PH_CHECK(status.has_value());
