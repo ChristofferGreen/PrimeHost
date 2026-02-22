@@ -6,6 +6,16 @@
 
 namespace PrimeHost {
 
+inline float resolvedRefreshRate(double refreshRate, double fallback) {
+  if (refreshRate > 0.0 && std::isfinite(refreshRate)) {
+    return static_cast<float>(refreshRate);
+  }
+  if (fallback > 0.0 && std::isfinite(fallback)) {
+    return static_cast<float>(fallback);
+  }
+  return 0.0f;
+}
+
 inline std::optional<std::chrono::nanoseconds> intervalFromRefreshRate(double refreshRate) {
   if (!(refreshRate > 0.0) || !std::isfinite(refreshRate)) {
     return std::nullopt;

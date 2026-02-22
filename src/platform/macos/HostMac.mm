@@ -131,6 +131,17 @@ std::optional<std::chrono::nanoseconds> display_interval_for_display(CGDirectDis
   }
   double refreshRate = CGDisplayModeGetRefreshRate(mode);
   CGDisplayModeRelease(mode);
+  if (!(refreshRate > 0.0) || !std::isfinite(refreshRate)) {
+    for (NSScreen* screen in [NSScreen screens]) {
+      NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+      if (screenNumber && screenNumber.unsignedIntValue == displayId) {
+        if (@available(macOS 10.15, *)) {
+          refreshRate = static_cast<double>(screen.maximumFramesPerSecond);
+        }
+        break;
+      }
+    }
+  }
   return intervalFromRefreshRate(refreshRate);
 }
 
@@ -1529,17 +1540,23 @@ HostResult<size_t> HostMac::displays(std::span<DisplayInfo> outDisplays) const {
     info.width = static_cast<uint32_t>(std::lround(bounds.size.width));
     info.height = static_cast<uint32_t>(std::lround(bounds.size.height));
     info.scale = 1.0f;
+    double fallbackRate = 0.0;
     for (NSScreen* screen in [NSScreen screens]) {
       NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
       if (screenNumber && screenNumber.unsignedIntValue == id) {
         info.scale = static_cast<float>(screen.backingScaleFactor);
+        if (@available(macOS 10.15, *)) {
+          fallbackRate = static_cast<double>(screen.maximumFramesPerSecond);
+        }
         break;
       }
     }
     CGDisplayModeRef mode = CGDisplayCopyDisplayMode(id);
     if (mode) {
-      info.refreshRate = static_cast<float>(CGDisplayModeGetRefreshRate(mode));
+      info.refreshRate = resolvedRefreshRate(CGDisplayModeGetRefreshRate(mode), fallbackRate);
       CGDisplayModeRelease(mode);
+    } else {
+      info.refreshRate = resolvedRefreshRate(0.0, fallbackRate);
     }
     info.isPrimary = (id == CGMainDisplayID());
     outDisplays[written++] = info;
@@ -1568,17 +1585,23 @@ HostResult<DisplayInfo> HostMac::displayInfo(uint32_t displayId) const {
     info.width = static_cast<uint32_t>(std::lround(bounds.size.width));
     info.height = static_cast<uint32_t>(std::lround(bounds.size.height));
     info.scale = 1.0f;
+    double fallbackRate = 0.0;
     for (NSScreen* screen in [NSScreen screens]) {
       NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
       if (screenNumber && screenNumber.unsignedIntValue == id) {
         info.scale = static_cast<float>(screen.backingScaleFactor);
+        if (@available(macOS 10.15, *)) {
+          fallbackRate = static_cast<double>(screen.maximumFramesPerSecond);
+        }
         break;
       }
     }
     CGDisplayModeRef mode = CGDisplayCopyDisplayMode(id);
     if (mode) {
-      info.refreshRate = static_cast<float>(CGDisplayModeGetRefreshRate(mode));
+      info.refreshRate = resolvedRefreshRate(CGDisplayModeGetRefreshRate(mode), fallbackRate);
       CGDisplayModeRelease(mode);
+    } else {
+      info.refreshRate = resolvedRefreshRate(0.0, fallbackRate);
     }
     info.isPrimary = (id == CGMainDisplayID());
     return info;
