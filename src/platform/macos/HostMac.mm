@@ -30,6 +30,7 @@
 #include "PrimeHost/FrameConfigDefaults.h"
 #include "PlatformInputUtil.h"
 #include "PlatformDisplayUtil.h"
+#include "PlatformTimeUtil.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
 #include "GamepadProfiles.h"
@@ -131,6 +132,14 @@ std::optional<std::chrono::nanoseconds> display_interval_for_display(CGDirectDis
   double refreshRate = CGDisplayModeGetRefreshRate(mode);
   CGDisplayModeRelease(mode);
   return intervalFromRefreshRate(refreshRate);
+}
+
+std::chrono::steady_clock::time_point event_time_for(NSEvent* event) {
+  if (!event) {
+    return std::chrono::steady_clock::now();
+  }
+  double uptime = [NSProcessInfo processInfo].systemUptime;
+  return steadyTimeFromUptime(event.timestamp, uptime, std::chrono::steady_clock::now());
 }
 
 char ascii_lower(char value) {
@@ -3579,6 +3588,7 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   if (!surface) {
     return;
   }
+  auto eventTime = event_time_for(event);
   PointerDeviceType deviceType = type;
   uint32_t deviceId = kMouseDeviceId;
   if (event) {
@@ -3617,7 +3627,7 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   Event evt{};
   evt.scope = Event::Scope::Surface;
   evt.surfaceId = SurfaceId{surfaceId};
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = eventTime;
   evt.payload = pointer;
   enqueueEvent(std::move(evt));
   requestFrameForSurface(surface);
@@ -3631,6 +3641,7 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
   if (!surface || !surface->view) {
     return;
   }
+  auto eventTime = event_time_for(event);
   NSTouchPhase touchPhase = NSTouchPhaseAny;
   switch (phase) {
     case PointerPhase::Down:
@@ -3664,7 +3675,7 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
 
     Event connected{};
     connected.scope = Event::Scope::Global;
-    connected.time = std::chrono::steady_clock::now();
+    connected.time = eventTime;
     connected.payload = DeviceEvent{.deviceId = kTouchDeviceId, .deviceType = DeviceType::Touch, .connected = true};
     enqueueEvent(std::move(connected));
   }
@@ -3714,7 +3725,7 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
     Event evt{};
     evt.scope = Event::Scope::Surface;
     evt.surfaceId = SurfaceId{surfaceId};
-    evt.time = std::chrono::steady_clock::now();
+    evt.time = eventTime;
     evt.payload = pointer;
     enqueueEvent(std::move(evt));
     queued = true;
@@ -3752,7 +3763,7 @@ void HostMac::handleTabletProximity(uint64_t surfaceId, NSEvent* event) {
   Event evt{};
   evt.scope = Event::Scope::Surface;
   evt.surfaceId = SurfaceId{surfaceId};
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = event_time_for(event);
   evt.payload = pointer;
   enqueueEvent(std::move(evt));
   requestFrameForSurface(surface);
@@ -3772,7 +3783,7 @@ void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {
   Event evt{};
   evt.scope = Event::Scope::Surface;
   evt.surfaceId = SurfaceId{surfaceId};
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = event_time_for(event);
   evt.payload = scroll;
   enqueueEvent(std::move(evt));
   requestFrameForSurface(surface);
@@ -3794,7 +3805,7 @@ void HostMac::handleKey(NSEvent* event, bool pressed, bool repeat) {
   Event evt{};
   evt.scope = Event::Scope::Global;
   evt.surfaceId.reset();
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = event_time_for(event);
   evt.payload = key;
   enqueueEvent(std::move(evt));
   if (focusedSurface_) {
@@ -3842,7 +3853,7 @@ void HostMac::handleModifiers(NSEvent* event) {
   Event evt{};
   evt.scope = Event::Scope::Global;
   evt.surfaceId.reset();
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = event_time_for(event);
   evt.payload = key;
   enqueueEvent(std::move(evt));
   if (focusedSurface_) {
