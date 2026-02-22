@@ -32,4 +32,13 @@ PH_TEST("primehost.text_buffer", "buffer too small") {
   PH_CHECK(span.error().code == HostErrorCode::BufferTooSmall);
 }
 
+PH_TEST("primehost.text_buffer", "invalid offset fails") {
+  std::array<char, 4> buffer{};
+  TextBufferWriter writer{std::span<char>(buffer.data(), buffer.size()), 8u};
+
+  auto span = writer.append("hi");
+  PH_CHECK(!span.has_value());
+  PH_CHECK(span.error().code == HostErrorCode::BufferTooSmall);
+}
+
 TEST_SUITE_END();

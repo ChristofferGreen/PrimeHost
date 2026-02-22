@@ -11,10 +11,13 @@ struct TextBufferWriter {
   size_t offset = 0u;
 
   HostResult<TextSpan> append(std::string_view text) {
+    if (offset > buffer.size()) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
     if (text.empty()) {
       return TextSpan{static_cast<uint32_t>(offset), 0u};
     }
-    if (buffer.size() < offset + text.size()) {
+    if (text.size() > buffer.size() - offset) {
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }
     std::memcpy(buffer.data() + offset, text.data(), text.size());
