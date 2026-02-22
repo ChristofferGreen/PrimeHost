@@ -28,6 +28,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -343,6 +344,8 @@ public:
   HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
   HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
   HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) override;
+  HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
+  HostStatus setClipboardText(Utf8TextView text) override;
 
   HostStatus setGamepadRumble(const GamepadRumble& rumble) override;
   HostStatus setImeCompositionRect(SurfaceId surfaceId,
@@ -1246,6 +1249,42 @@ HostStatus HostMac::setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) {
     return {};
   }
   [surface->window toggleFullScreen:nil];
+  return {};
+}
+
+HostResult<Utf8TextView> HostMac::clipboardText(std::span<char> buffer) const {
+  if (buffer.empty()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+  NSString* text = [pasteboard stringForType:NSPasteboardTypeString];
+  if (!text) {
+    buffer[0] = '\0';
+    return Utf8TextView{buffer.data(), 0u};
+  }
+  NSData* data = [text dataUsingEncoding:NSUTF8StringEncoding];
+  if (!data) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  if (data.length > buffer.size()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  std::memcpy(buffer.data(), data.bytes, data.length);
+  return Utf8TextView{buffer.data(), static_cast<size_t>(data.length)};
+}
+
+HostStatus HostMac::setClipboardText(Utf8TextView text) {
+  NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+  [pasteboard clearContents];
+  NSString* nsText = [[NSString alloc] initWithBytes:text.data()
+                                             length:text.size()
+                                           encoding:NSUTF8StringEncoding];
+  if (!nsText) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  if (![pasteboard setString:nsText forType:NSPasteboardTypeString]) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
   return {};
 }
 

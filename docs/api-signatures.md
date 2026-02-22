@@ -305,6 +305,8 @@ public:
   virtual HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) = 0;
   virtual HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) = 0;
   virtual HostStatus setSurfaceFullscreen(SurfaceId surfaceId, bool fullscreen) = 0;
+  virtual HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const = 0;
+  virtual HostStatus setClipboardText(Utf8TextView text) = 0;
 
   virtual HostStatus setGamepadRumble(const GamepadRumble& rumble) = 0;
   virtual HostStatus setImeCompositionRect(SurfaceId surfaceId,
