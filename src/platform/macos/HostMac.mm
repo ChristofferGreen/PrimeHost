@@ -70,6 +70,7 @@ namespace {
 constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
 constexpr uint32_t kPenDeviceId = 3u;
+constexpr uint32_t kTouchDeviceId = 4u;
 
 struct SurfaceState {
   SurfaceId surfaceId{};
@@ -661,6 +662,7 @@ public:
 
   void handleResize(uint64_t surfaceId);
   void handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDeviceType type, NSPoint point, NSEvent* event);
+  void handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, PointerPhase phase);
   void handleScroll(uint64_t surfaceId, NSEvent* event);
   void handleKey(NSEvent* event, bool pressed, bool repeat);
   void handleModifiers(NSEvent* event);
@@ -710,6 +712,8 @@ private:
   std::vector<uint32_t> deviceOrder_;
   std::unordered_map<void*, uint32_t> gamepadIds_;
   std::unordered_map<uint32_t, GCController*> gamepadControllers_;
+  std::unordered_map<void*, uint32_t> touchIds_;
+  uint32_t nextTouchId_ = 1u;
   IOHIDManagerRef hidManager_ = nullptr;
   std::unordered_map<uint64_t, IOHIDDeviceRef> hidDevicesById_;
   std::unordered_map<uint32_t, CHHapticEngine*> hapticsEngines_;
@@ -723,7 +727,7 @@ private:
   Callbacks callbacks_{};
   LogCallback logCallback_{};
   uint64_t nextSurfaceId_ = 1u;
-  uint32_t nextDeviceId_ = 4u;
+  uint32_t nextDeviceId_ = 5u;
   uint64_t nextTrayId_ = 1u;
   CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
@@ -930,6 +934,30 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
     self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Move, PrimeHost::PointerDeviceType::Mouse, p, event);
+  }
+}
+
+- (void)touchesBeganWithEvent:(NSEvent*)event {
+  if (self.host) {
+    self.host->handleTouches(self.surfaceId, self, event, PrimeHost::PointerPhase::Down);
+  }
+}
+
+- (void)touchesMovedWithEvent:(NSEvent*)event {
+  if (self.host) {
+    self.host->handleTouches(self.surfaceId, self, event, PrimeHost::PointerPhase::Move);
+  }
+}
+
+- (void)touchesEndedWithEvent:(NSEvent*)event {
+  if (self.host) {
+    self.host->handleTouches(self.surfaceId, self, event, PrimeHost::PointerPhase::Up);
+  }
+}
+
+- (void)touchesCancelledWithEvent:(NSEvent*)event {
+  if (self.host) {
+    self.host->handleTouches(self.surfaceId, self, event, PrimeHost::PointerPhase::Cancel);
   }
 }
 
@@ -1154,6 +1182,16 @@ HostMac::HostMac() {
   devices_.emplace(kPenDeviceId, pen);
   devices_[kPenDeviceId].info.name = devices_[kPenDeviceId].nameStorage;
   deviceOrder_.push_back(kPenDeviceId);
+
+  DeviceRecord touch{};
+  touch.info.deviceId = kTouchDeviceId;
+  touch.info.type = DeviceType::Touch;
+  touch.nameStorage = "Touch";
+  touch.caps.type = DeviceType::Touch;
+  touch.caps.maxTouches = 0u;
+  devices_.emplace(kTouchDeviceId, touch);
+  devices_[kTouchDeviceId].info.name = devices_[kTouchDeviceId].nameStorage;
+  deviceOrder_.push_back(kTouchDeviceId);
 
   auto now = std::chrono::steady_clock::now();
   for (uint32_t deviceId : deviceOrder_) {
@@ -1639,6 +1677,9 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   view.wantsLayer = YES;
   view.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  if ([view respondsToSelector:@selector(setAllowedTouchTypes:)]) {
+    view.allowedTouchTypes = NSTouchTypeDirect | NSTouchTypeIndirect;
+  }
 
   CAMetalLayer* layer = [CAMetalLayer layer];
   id device = MTLCreateSystemDefaultDevice();
@@ -3468,6 +3509,99 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   evt.time = std::chrono::steady_clock::now();
   evt.payload = pointer;
   enqueueEvent(std::move(evt));
+}
+
+void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, PointerPhase phase) {
+  if (!event || !view) {
+    return;
+  }
+  auto* surface = findSurface(surfaceId);
+  if (!surface || !surface->view) {
+    return;
+  }
+  NSTouchPhase touchPhase = NSTouchPhaseAny;
+  switch (phase) {
+    case PointerPhase::Down:
+      touchPhase = NSTouchPhaseBegan;
+      break;
+    case PointerPhase::Move:
+      touchPhase = NSTouchPhaseMoved;
+      break;
+    case PointerPhase::Up:
+      touchPhase = NSTouchPhaseEnded;
+      break;
+    case PointerPhase::Cancel:
+      touchPhase = NSTouchPhaseCancelled;
+      break;
+  }
+  NSSet<NSTouch*>* touches = [event touchesMatchingPhase:touchPhase inView:view];
+  if (!touches || touches.count == 0) {
+    return;
+  }
+
+  if (devices_.find(kTouchDeviceId) == devices_.end()) {
+    DeviceRecord touch{};
+    touch.info.deviceId = kTouchDeviceId;
+    touch.info.type = DeviceType::Touch;
+    touch.nameStorage = "Touch";
+    touch.caps.type = DeviceType::Touch;
+    touch.caps.maxTouches = 0u;
+    devices_.emplace(kTouchDeviceId, touch);
+    devices_[kTouchDeviceId].info.name = devices_[kTouchDeviceId].nameStorage;
+    deviceOrder_.push_back(kTouchDeviceId);
+
+    Event connected{};
+    connected.scope = Event::Scope::Global;
+    connected.time = std::chrono::steady_clock::now();
+    connected.payload = DeviceEvent{.deviceId = kTouchDeviceId, .deviceType = DeviceType::Touch, .connected = true};
+    enqueueEvent(std::move(connected));
+  }
+
+  NSTouch* primary = touches.anyObject;
+  for (NSTouch* touch in touches) {
+    if (!touch) {
+      continue;
+    }
+    void* key = (__bridge void*)touch.identity;
+    uint32_t pointerId = 0u;
+    auto it = touchIds_.find(key);
+    if (phase == PointerPhase::Down || it == touchIds_.end()) {
+      pointerId = nextTouchId_++;
+      if (pointerId == 0u) {
+        pointerId = nextTouchId_++;
+      }
+      touchIds_[key] = pointerId;
+    } else {
+      pointerId = it->second;
+    }
+
+    NSPoint location = [touch locationInView:view];
+    PointerEvent pointer{};
+    pointer.deviceId = kTouchDeviceId;
+    pointer.pointerId = pointerId;
+    pointer.deviceType = PointerDeviceType::Touch;
+    pointer.phase = phase;
+    pointer.x = static_cast<int32_t>(std::lround(location.x));
+    pointer.y = static_cast<int32_t>(std::lround(location.y));
+    if (phase == PointerPhase::Move) {
+      NSPoint previous = [touch previousLocationInView:view];
+      pointer.deltaX = static_cast<int32_t>(std::lround(location.x - previous.x));
+      pointer.deltaY = static_cast<int32_t>(std::lround(location.y - previous.y));
+    }
+    pointer.buttonMask = 0u;
+    pointer.isPrimary = (touch == primary);
+
+    Event evt{};
+    evt.scope = Event::Scope::Surface;
+    evt.surfaceId = SurfaceId{surfaceId};
+    evt.time = std::chrono::steady_clock::now();
+    evt.payload = pointer;
+    enqueueEvent(std::move(evt));
+
+    if (phase == PointerPhase::Up || phase == PointerPhase::Cancel) {
+      touchIds_.erase(key);
+    }
+  }
 }
 
 void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {
