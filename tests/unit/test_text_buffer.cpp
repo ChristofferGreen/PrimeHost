@@ -4,6 +4,8 @@
 
 #include "tests/unit/test_helpers.h"
 
+#include <limits>
+
 using namespace PrimeHost;
 
 TEST_SUITE_BEGIN("primehost.text_buffer");
@@ -37,6 +39,16 @@ PH_TEST("primehost.text_buffer", "invalid offset fails") {
   TextBufferWriter writer{std::span<char>(buffer.data(), buffer.size()), 8u};
 
   auto span = writer.append("hi");
+  PH_CHECK(!span.has_value());
+  PH_CHECK(span.error().code == HostErrorCode::BufferTooSmall);
+}
+
+PH_TEST("primehost.text_buffer", "span overflow fails") {
+  std::array<char, 4> buffer{};
+  TextBufferWriter writer{std::span<char>(buffer.data(), buffer.size()),
+                          static_cast<size_t>(std::numeric_limits<uint32_t>::max())};
+
+  auto span = writer.append("a");
   PH_CHECK(!span.has_value());
   PH_CHECK(span.error().code == HostErrorCode::BufferTooSmall);
 }

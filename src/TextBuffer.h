@@ -3,6 +3,7 @@
 #include "PrimeHost/Host.h"
 
 #include <cstring>
+#include <limits>
 
 namespace PrimeHost {
 
@@ -11,6 +12,16 @@ struct TextBufferWriter {
   size_t offset = 0u;
 
   HostResult<TextSpan> append(std::string_view text) {
+    constexpr size_t kMaxSpan = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+    if (offset > kMaxSpan) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    if (text.size() > kMaxSpan) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    if (text.size() > kMaxSpan - offset) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
     if (offset > buffer.size()) {
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }
