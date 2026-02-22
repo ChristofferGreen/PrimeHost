@@ -3571,7 +3571,7 @@ void HostMac::handleResize(uint64_t surfaceId) {
     Event event{};
     event.scope = Event::Scope::Surface;
     event.surfaceId = SurfaceId{surfaceId};
-    event.time = std::chrono::steady_clock::now();
+    event.time = event_time_for([NSApp currentEvent]);
     event.payload = resize;
     enqueueEvent(std::move(event));
 
@@ -3904,7 +3904,7 @@ void HostMac::handleFocus(uint64_t surfaceId, bool focused) {
   Event event{};
   event.scope = Event::Scope::Surface;
   event.surfaceId = surface->surfaceId;
-  event.time = std::chrono::steady_clock::now();
+  event.time = event_time_for([NSApp currentEvent]);
   event.payload = focus;
   enqueueEvent(std::move(event));
   requestFrameForSurface(surface);
@@ -4241,7 +4241,7 @@ void HostMac::handleDrop(uint64_t surfaceId, NSArray<NSURL*>* urls) {
   Event event{};
   event.scope = Event::Scope::Surface;
   event.surfaceId = surface->surfaceId;
-  event.time = std::chrono::steady_clock::now();
+  event.time = event_time_for([NSApp currentEvent]);
   event.payload = drop;
   enqueueEvent(std::move(event), std::move(text));
   requestFrameForSurface(surface);
@@ -4322,7 +4322,7 @@ void HostMac::handleWindowClosed(uint64_t surfaceId) {
   Event evt{};
   evt.scope = Event::Scope::Surface;
   evt.surfaceId = SurfaceId{surfaceId};
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = event_time_for([NSApp currentEvent]);
   evt.payload = LifecycleEvent{LifecyclePhase::Destroyed};
   enqueueEvent(std::move(evt));
 
