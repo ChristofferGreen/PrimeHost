@@ -4541,13 +4541,19 @@ NSCursor* HostMac::cursorForShape(CursorShape shape) const {
         return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionLeft
                                          inDirections:NSCursorFrameResizeDirectionsAll];
       }
-      return [NSCursor arrowCursor];
+      #pragma clang diagnostic push
+      #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      return [NSCursor resizeLeftRightCursor];
+      #pragma clang diagnostic pop
     case CursorShape::ResizeUpDown:
       if (@available(macOS 15.0, *)) {
         return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTop
                                          inDirections:NSCursorFrameResizeDirectionsAll];
       }
-      return [NSCursor arrowCursor];
+      #pragma clang diagnostic push
+      #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      return [NSCursor resizeUpDownCursor];
+      #pragma clang diagnostic pop
     case CursorShape::ResizeDiagonal:
       if (@available(macOS 15.0, *)) {
         return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopLeft
