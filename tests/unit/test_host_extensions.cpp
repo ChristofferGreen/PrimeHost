@@ -160,4 +160,27 @@ PH_TEST("primehost.extensions", "gamepad light invalid device") {
   }
 }
 
+PH_TEST("primehost.extensions", "gamepad rumble invalid device") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  GamepadRumble rumble{};
+  rumble.deviceId = 999u;
+  rumble.lowFrequency = 0.5f;
+  rumble.highFrequency = 0.5f;
+  rumble.duration = std::chrono::milliseconds(50);
+
+  auto status = host->setGamepadRumble(rumble);
+  PH_CHECK(!status.has_value());
+  if (!status.has_value()) {
+    bool allowed = status.error().code == HostErrorCode::InvalidDevice;
+    allowed = allowed || status.error().code == HostErrorCode::Unsupported;
+    PH_CHECK(allowed);
+  }
+}
+
 TEST_SUITE_END();
