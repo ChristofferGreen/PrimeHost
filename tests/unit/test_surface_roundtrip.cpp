@@ -36,6 +36,9 @@ PH_TEST("primehost.surface", "surface size round-trip") {
     PH_CHECK(size->height == 48u);
   }
 
+  auto emptyTitle = host->setSurfaceTitle(surface.value(), "");
+  PH_CHECK(emptyTitle.has_value());
+
   auto setSize = host->setSurfaceSize(surface.value(), 96u, 80u);
   PH_CHECK(setSize.has_value());
   if (setSize) {
