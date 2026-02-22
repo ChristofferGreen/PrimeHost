@@ -3,7 +3,7 @@
 #import <dispatch/dispatch.h>
 
 #include "PrimeHost/Audio.h"
-#include "AudioConfigDefaults.h"
+#include "PrimeHost/AudioConfigDefaults.h"
 #include "PrimeHost/AudioConfigValidation.h"
 
 #include <algorithm>

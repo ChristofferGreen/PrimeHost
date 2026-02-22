@@ -304,6 +304,8 @@ HostStatus validateFrameConfig(const FrameConfig& config, const SurfaceCapabilit
 
 HostStatus validateAudioStreamConfig(const AudioStreamConfig& config);
 
+AudioStreamConfig resolveAudioStreamConfig(const AudioStreamConfig& config);
+
 } // namespace PrimeHost
 ```
 

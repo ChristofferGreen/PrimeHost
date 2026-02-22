@@ -144,6 +144,9 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `validateFrameConfig(const FrameConfig&, const SurfaceCapabilities&)` (see `PrimeHost/FrameConfigValidation.h`).
 - `validateAudioStreamConfig(const AudioStreamConfig&)` (see `PrimeHost/AudioConfigValidation.h`).
 
+## Default Helpers
+- `resolveAudioStreamConfig(const AudioStreamConfig&)` (see `PrimeHost/AudioConfigDefaults.h`).
+
 ### Error Handling (Example)
 ```cpp
 auto caps = host.surfaceCapabilities(surfaceId);

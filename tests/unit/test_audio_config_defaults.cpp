@@ -1,4 +1,4 @@
-#include "AudioConfigDefaults.h"
+#include "PrimeHost/AudioConfigDefaults.h"
 
 #include "tests/unit/test_helpers.h"
 
