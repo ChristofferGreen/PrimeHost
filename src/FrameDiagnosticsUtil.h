@@ -9,7 +9,8 @@ namespace PrimeHost {
 
 inline FrameDiagnostics buildFrameDiagnostics(std::optional<std::chrono::nanoseconds> target,
                                               std::chrono::nanoseconds actual,
-                                              FramePolicy policy) {
+                                              FramePolicy policy,
+                                              FramePacingSource source) {
   FrameDiagnostics diag{};
   if (target && target->count() > 0) {
     diag.targetInterval = *target;
@@ -23,7 +24,7 @@ inline FrameDiagnostics buildFrameDiagnostics(std::optional<std::chrono::nanosec
       }
     }
   }
-  diag.wasThrottled = policy == FramePolicy::Capped;
+  diag.wasThrottled = (policy == FramePolicy::Capped && source == FramePacingSource::HostLimiter);
   return diag;
 }
 

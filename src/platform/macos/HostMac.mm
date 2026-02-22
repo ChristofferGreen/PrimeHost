@@ -1787,7 +1787,10 @@ HostStatus HostMac::requestFrame(SurfaceId surfaceId, bool bypassCap) {
       target = displayInterval_;
     }
   }
-  FrameDiagnostics diag = buildFrameDiagnostics(target, timing.delta, surface->frameConfig.framePolicy);
+  FrameDiagnostics diag = buildFrameDiagnostics(target,
+                                                timing.delta,
+                                                surface->frameConfig.framePolicy,
+                                                surface->frameConfig.framePacingSource);
 
   callbacks_.onFrame(surfaceId, timing, diag);
   return {};
