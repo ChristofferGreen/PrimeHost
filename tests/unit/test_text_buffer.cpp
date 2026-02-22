@@ -14,6 +14,11 @@ PH_TEST("primehost.text_buffer", "append text spans") {
   std::array<char, 16> buffer{};
   TextBufferWriter writer{std::span<char>(buffer.data(), buffer.size()), 0u};
 
+  auto empty = writer.append("");
+  PH_CHECK(empty.has_value());
+  PH_CHECK(empty->offset == 0u);
+  PH_CHECK(empty->length == 0u);
+
   auto span = writer.append("hi");
   PH_CHECK(span.has_value());
   PH_CHECK(span->offset == 0u);

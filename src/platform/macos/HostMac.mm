@@ -2853,7 +2853,7 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (static_cast<size_t>(urls.count) > outPaths.size()) {
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }
-    size_t offset = 0u;
+    TextBufferWriter writer{buffer, 0u};
     for (NSUInteger i = 0; i < urls.count; ++i) {
       NSURL* url = urls[i];
       NSString* path = url.path;
@@ -2861,13 +2861,12 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       if (!data) {
         return std::unexpected(HostError{HostErrorCode::PlatformFailure});
       }
-      if (offset + data.length > buffer.size()) {
-        return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+      std::string_view text(reinterpret_cast<const char*>(data.bytes), data.length);
+      auto span = writer.append(text);
+      if (!span) {
+        return std::unexpected(span.error());
       }
-      std::memcpy(buffer.data() + offset, data.bytes, data.length);
-      outPaths[i] = TextSpan{static_cast<uint32_t>(offset),
-                             static_cast<uint32_t>(data.length)};
-      offset += static_cast<size_t>(data.length);
+      outPaths[i] = span.value();
     }
     return static_cast<size_t>(urls.count);
   }
@@ -2929,11 +2928,13 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (!data) {
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
-    if (data.length > buffer.size()) {
-      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    TextBufferWriter writer{buffer, 0u};
+    std::string_view text(reinterpret_cast<const char*>(data.bytes), data.length);
+    auto span = writer.append(text);
+    if (!span) {
+      return std::unexpected(span.error());
     }
-    std::memcpy(buffer.data(), data.bytes, data.length);
-    outPaths[0] = TextSpan{0u, static_cast<uint32_t>(data.length)};
+    outPaths[0] = span.value();
     return static_cast<size_t>(1u);
   }
 
