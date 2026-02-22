@@ -105,4 +105,34 @@ PH_TEST("primehost.clipboard_paths", "count and size consistency") {
   }
 }
 
+PH_TEST("primehost.clipboard_paths", "empty after text") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto setText = host->setClipboardText("");
+  if (!setText.has_value()) {
+    bool allowed = setText.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setText.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto count = host->clipboardPathsCount();
+  if (!count.has_value()) {
+    PH_CHECK(count.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto size = host->clipboardPathsTextSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  PH_CHECK(count.value() == 0u);
+  PH_CHECK(size.value() == 0u);
+}
+
 TEST_SUITE_END();
