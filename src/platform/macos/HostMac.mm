@@ -3644,8 +3644,14 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
     pointer.twist = normalizeTwistDegrees(static_cast<float>(event.rotation));
   }
   if (phase == PrimeHost::PointerPhase::Move) {
-    pointer.deltaX = static_cast<int32_t>(std::lround(event.deltaX));
-    pointer.deltaY = static_cast<int32_t>(std::lround(event.deltaY));
+    if (event) {
+      if (auto dx = normalizedPointerDelta(event.deltaX)) {
+        pointer.deltaX = dx.value();
+      }
+      if (auto dy = normalizedPointerDelta(event.deltaY)) {
+        pointer.deltaY = dy.value();
+      }
+    }
   }
   pointer.buttonMask = map_mouse_buttons([NSEvent pressedMouseButtons]);
   pointer.isPrimary = true;

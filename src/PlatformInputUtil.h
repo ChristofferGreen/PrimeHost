@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 
 #include "PrimeHost/Host.h"
@@ -52,6 +53,13 @@ inline float normalizedScrollDelta(double value) {
     return 0.0f;
   }
   return static_cast<float>(value);
+}
+
+inline std::optional<int32_t> normalizedPointerDelta(double value) {
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+  return static_cast<int32_t>(std::lround(value));
 }
 
 inline float clampGamepadAxisValue(uint32_t controlId, float value) {
