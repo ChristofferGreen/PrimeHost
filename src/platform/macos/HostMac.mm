@@ -1732,7 +1732,9 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
 
   NSString* title = config.title ? utf8_to_nsstring(*config.title) : nil;
   NSString* defaultPath = config.defaultPath ? utf8_to_nsstring(*config.defaultPath) : nil;
-  if ((config.title && !title) || (config.defaultPath && !defaultPath)) {
+  NSString* defaultName = config.defaultName ? utf8_to_nsstring(*config.defaultName) : nil;
+  if ((config.title && !title) || (config.defaultPath && !defaultPath) ||
+      (config.defaultName && !defaultName)) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   if (config.mode == FileDialogMode::OpenFile) {
@@ -1754,6 +1756,9 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (defaultPath) {
       NSURL* url = [NSURL fileURLWithPath:defaultPath];
       panel.directoryURL = url;
+    }
+    if (defaultName) {
+      panel.nameFieldStringValue = defaultName;
     }
     if (@available(macOS 12.0, *)) {
       if (contentTypes.value()) {
@@ -1867,6 +1872,9 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
         panel.directoryURL = [url URLByDeletingLastPathComponent];
         panel.nameFieldStringValue = url.lastPathComponent;
       }
+    }
+    if (defaultName) {
+      panel.nameFieldStringValue = defaultName;
     }
     if (@available(macOS 12.0, *)) {
       if (contentTypes.value()) {

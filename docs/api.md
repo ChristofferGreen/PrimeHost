@@ -108,6 +108,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## File Dialogs (Draft)
 - Native open/save panels.
 - Optional file extension filters via `FileDialogConfig::allowedExtensions`.
+- Optional default filename via `FileDialogConfig::defaultName`.
 - Modes: open file, open directory, save file.
 - Implemented: `fileDialog`, `fileDialogPaths` (macOS).
 

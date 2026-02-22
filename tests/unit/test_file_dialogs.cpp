@@ -62,6 +62,14 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
   if (!invalid.has_value()) {
     PH_CHECK(invalid.error().code == HostErrorCode::InvalidConfig);
   }
+
+  FileDialogConfig badName{};
+  badName.defaultName = badView;
+  auto invalidName = host->fileDialogPaths(badName, spans, okBuffer);
+  PH_CHECK(!invalidName.has_value());
+  if (!invalidName.has_value()) {
+    PH_CHECK(invalidName.error().code == HostErrorCode::InvalidConfig);
+  }
 }
 
 TEST_SUITE_END();

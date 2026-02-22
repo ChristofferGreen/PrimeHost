@@ -163,6 +163,7 @@ struct FileDialogConfig {
   FileDialogMode mode = FileDialogMode::OpenFile;
   std::optional<Utf8TextView> title;
   std::optional<Utf8TextView> defaultPath;
+  std::optional<Utf8TextView> defaultName;
   std::span<const Utf8TextView> allowedExtensions;
 };
 
