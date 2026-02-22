@@ -81,6 +81,8 @@ PH_TEST("primehost.input.util", "normalized scroll delta ignores non finite") {
 PH_TEST("primehost.input.util", "normalized pointer delta") {
   PH_CHECK(normalizedPointerDelta(1.2).value() == 1);
   PH_CHECK(normalizedPointerDelta(-1.6).value() == -2);
+  PH_CHECK(normalizedPointerDelta(1e20).value() == std::numeric_limits<int32_t>::max());
+  PH_CHECK(normalizedPointerDelta(-1e20).value() == std::numeric_limits<int32_t>::min());
   PH_CHECK(!normalizedPointerDelta(std::numeric_limits<double>::quiet_NaN()).has_value());
 }
 

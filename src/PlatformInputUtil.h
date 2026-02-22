@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 
 #include "PrimeHost/Host.h"
@@ -58,6 +59,14 @@ inline float normalizedScrollDelta(double value) {
 inline std::optional<int32_t> normalizedPointerDelta(double value) {
   if (!std::isfinite(value)) {
     return std::nullopt;
+  }
+  constexpr double kMax = static_cast<double>(std::numeric_limits<int32_t>::max());
+  constexpr double kMin = static_cast<double>(std::numeric_limits<int32_t>::min());
+  if (value >= kMax) {
+    return std::numeric_limits<int32_t>::max();
+  }
+  if (value <= kMin) {
+    return std::numeric_limits<int32_t>::min();
   }
   return static_cast<int32_t>(std::lround(value));
 }
