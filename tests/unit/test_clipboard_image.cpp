@@ -3,6 +3,7 @@
 #include "tests/unit/test_helpers.h"
 
 #include <array>
+#include <vector>
 
 using namespace PrimeHost;
 
@@ -56,6 +57,35 @@ PH_TEST("primehost.clipboard_image", "size query") {
   if (!size.has_value()) {
     PH_CHECK(size.error().code == HostErrorCode::Unsupported);
     return;
+  }
+}
+
+PH_TEST("primehost.clipboard_image", "buffer too small for image") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::array<uint8_t, 4> pixels = {0, 0, 0, 0};
+  ImageData image{};
+  image.size = ImageSize{1u, 1u};
+  image.pixels = pixels;
+
+  auto setStatus = host->setClipboardImage(image);
+  if (!setStatus.has_value()) {
+    bool allowed = setStatus.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setStatus.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  std::array<uint8_t, 1> tooSmall{};
+  auto readBack = host->clipboardImage(tooSmall);
+  PH_CHECK(!readBack.has_value());
+  if (!readBack.has_value()) {
+    PH_CHECK(readBack.error().code == HostErrorCode::BufferTooSmall);
   }
 }
 
