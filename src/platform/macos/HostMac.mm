@@ -3802,8 +3802,8 @@ void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {
   }
   ScrollEvent scroll{};
   scroll.deviceId = kMouseDeviceId;
-  scroll.deltaX = static_cast<float>(event.scrollingDeltaX);
-  scroll.deltaY = static_cast<float>(event.scrollingDeltaY);
+  scroll.deltaX = normalizedScrollDelta(event.scrollingDeltaX);
+  scroll.deltaY = normalizedScrollDelta(event.scrollingDeltaY);
   scroll.isLines = !event.hasPreciseScrollingDeltas;
 
   Event evt{};

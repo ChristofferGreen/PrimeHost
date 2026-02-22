@@ -40,6 +40,13 @@ inline std::optional<float> normalizedPressure(float value) {
   return std::clamp(value, 0.0f, 1.0f);
 }
 
+inline float normalizedScrollDelta(double value) {
+  if (!std::isfinite(value)) {
+    return 0.0f;
+  }
+  return static_cast<float>(value);
+}
+
 inline float clampGamepadAxisValue(uint32_t controlId, float value) {
   if (!std::isfinite(value)) {
     return 0.0f;
