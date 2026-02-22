@@ -150,6 +150,8 @@ config.format.channels = 2;
 config.periodFrames = 256;
 config.bufferFrames = 512;
 
+config = PrimeHost::resolveAudioStreamConfig(config);
+
 auto validation = PrimeHost::validateAudioStreamConfig(config);
 if (!validation) {
   return;
