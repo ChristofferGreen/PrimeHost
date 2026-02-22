@@ -179,6 +179,12 @@ PH_TEST("primehost.surface", "surface size round-trip") {
   if (!imeAfter.has_value()) {
     PH_CHECK(imeAfter.error().code == HostErrorCode::InvalidSurface);
   }
+
+  auto setDisplayAfter = host->setSurfaceDisplay(surface.value(), 1u);
+  PH_CHECK(!setDisplayAfter.has_value());
+  if (!setDisplayAfter.has_value()) {
+    PH_CHECK(setDisplayAfter.error().code == HostErrorCode::InvalidSurface);
+  }
 }
 
 TEST_SUITE_END();
