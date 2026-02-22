@@ -127,6 +127,7 @@ PH_TEST("primehost.devices", "touch device present") {
       PH_CHECK(caps.has_value());
       if (caps) {
         PH_CHECK(caps->type == DeviceType::Touch);
+        PH_CHECK(caps->maxTouches >= 1u);
       }
     }
   }

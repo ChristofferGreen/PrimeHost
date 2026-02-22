@@ -1188,7 +1188,7 @@ HostMac::HostMac() {
   touch.info.type = DeviceType::Touch;
   touch.nameStorage = "Touch";
   touch.caps.type = DeviceType::Touch;
-  touch.caps.maxTouches = 0u;
+  touch.caps.maxTouches = 1u;
   devices_.emplace(kTouchDeviceId, touch);
   devices_[kTouchDeviceId].info.name = devices_[kTouchDeviceId].nameStorage;
   deviceOrder_.push_back(kTouchDeviceId);
@@ -3545,7 +3545,7 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
     touch.info.type = DeviceType::Touch;
     touch.nameStorage = "Touch";
     touch.caps.type = DeviceType::Touch;
-    touch.caps.maxTouches = 0u;
+    touch.caps.maxTouches = 1u;
     devices_.emplace(kTouchDeviceId, touch);
     devices_[kTouchDeviceId].info.name = devices_[kTouchDeviceId].nameStorage;
     deviceOrder_.push_back(kTouchDeviceId);
@@ -3558,6 +3558,13 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
   }
 
   NSTouch* primary = touches.anyObject;
+  if (touches.count > 0) {
+    auto capsIt = devices_.find(kTouchDeviceId);
+    if (capsIt != devices_.end()) {
+      uint32_t count = static_cast<uint32_t>(touches.count);
+      capsIt->second.caps.maxTouches = std::max(capsIt->second.caps.maxTouches, count);
+    }
+  }
   for (NSTouch* touch in touches) {
     if (!touch) {
       continue;
