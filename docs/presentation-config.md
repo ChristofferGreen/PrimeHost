@@ -47,6 +47,7 @@ These defaults guide the initial Apple Silicon implementation and are expected t
   - `LowLatency` prefers the minimum buffer count.
   - `Smooth` prefers 3 buffers when supported.
   - `Uncapped` prefers the maximum buffer count.
+  - Use `effectiveBufferCount` to clamp a chosen buffer count to surface capabilities.
 
 ## MaxFrameLatency
 - `maxFrameLatency` is clamped to `bufferCount` when both are set.
