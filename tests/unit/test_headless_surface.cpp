@@ -141,6 +141,12 @@ PH_TEST("primehost.headless", "create and size") {
     }
   }
 
+  auto invalidSize = host->setSurfaceSize(surface.value(), 0u, 10u);
+  PH_CHECK(!invalidSize.has_value());
+  if (!invalidSize.has_value()) {
+    PH_CHECK(invalidSize.error().code == HostErrorCode::InvalidConfig);
+  }
+
   auto destroyed = host->destroySurface(surface.value());
   PH_CHECK(destroyed.has_value());
 }

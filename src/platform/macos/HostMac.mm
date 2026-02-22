@@ -1877,15 +1877,15 @@ HostStatus HostMac::setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t
   if (!surface) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
+  if (width == 0u || height == 0u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
   if (surface->headless) {
     surface->headlessSize = SurfaceSize{width, height};
     return {};
   }
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
-  }
-  if (width == 0u || height == 0u) {
-    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   NSSize size = NSMakeSize(static_cast<CGFloat>(width), static_cast<CGFloat>(height));
   [surface->window setContentSize:size];
