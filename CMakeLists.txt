@@ -150,6 +150,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_gamepad_ids.cpp
     tests/unit/test_request_frame.cpp
     tests/unit/test_smoke.cpp
+    tests/unit/test_wait_events.cpp
     tests/unit/test_text_buffer.cpp
   )
   target_link_libraries(PrimeHost_tests PRIVATE PrimeHost)
