@@ -35,6 +35,13 @@ PH_TEST("primehost.paths", "app path queries") {
       continue;
     }
 
+    std::span<char> empty{};
+    auto emptyResult = host->appPath(type, empty);
+    PH_CHECK(!emptyResult.has_value());
+    if (!emptyResult.has_value()) {
+      PH_CHECK(emptyResult.error().code == HostErrorCode::BufferTooSmall);
+    }
+
     std::vector<char> buffer(size.value());
     auto path = host->appPath(type, buffer);
     PH_CHECK(path.has_value());
