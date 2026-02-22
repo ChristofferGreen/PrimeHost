@@ -33,6 +33,7 @@
 #include "PlatformTimeUtil.h"
 #include "FrameDiagnosticsUtil.h"
 #include "FrameLimiter.h"
+#include "SizeUtil.h"
 #include "GamepadProfiles.h"
 #include "TextBuffer.h"
 
@@ -2520,12 +2521,19 @@ HostResult<std::optional<ImageSize>> HostMac::clipboardImageSize() const {
     if (!rep) {
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
-    ImageSize size{};
-    size.width = static_cast<uint32_t>(rep.pixelsWide);
-    size.height = static_cast<uint32_t>(rep.pixelsHigh);
-    if (size.width == 0u || size.height == 0u) {
+    if (rep.pixelsWide <= 0 || rep.pixelsHigh <= 0) {
       return std::optional<ImageSize>{};
     }
+    size_t width = static_cast<size_t>(rep.pixelsWide);
+    size_t height = static_cast<size_t>(rep.pixelsHigh);
+    auto widthU32 = checkedU32(width);
+    auto heightU32 = checkedU32(height);
+    if (!widthU32 || !heightU32) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    ImageSize size{};
+    size.width = widthU32.value();
+    size.height = heightU32.value();
     return std::optional<ImageSize>{size};
   }
   return std::unexpected(HostError{HostErrorCode::Unsupported});
@@ -2565,8 +2573,20 @@ HostResult<ClipboardImageResult> HostMac::clipboardImage(std::span<uint8_t> buff
     if (width == 0u || height == 0u) {
       return result;
     }
-    size_t required = width * height * 4u;
-    if (buffer.size() < required) {
+    auto widthU32 = checkedU32(width);
+    auto heightU32 = checkedU32(height);
+    if (!widthU32 || !heightU32) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    auto pixelCount = checkedSizeMul(width, height);
+    if (!pixelCount) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    auto requiredBytes = checkedSizeMul(pixelCount.value(), 4u);
+    if (!requiredBytes) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    if (buffer.size() < requiredBytes.value()) {
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -2592,8 +2612,8 @@ HostResult<ClipboardImageResult> HostMac::clipboardImage(std::span<uint8_t> buff
     CGContextRelease(context);
 
     result.available = true;
-    result.size = ImageSize{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-    result.pixels = std::span<const uint8_t>(buffer.data(), required);
+    result.size = ImageSize{widthU32.value(), heightU32.value()};
+    result.pixels = std::span<const uint8_t>(buffer.data(), requiredBytes.value());
     return result;
   }
   return std::unexpected(HostError{HostErrorCode::Unsupported});
