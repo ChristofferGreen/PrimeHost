@@ -2198,6 +2198,9 @@ HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
+  if (cursorVisible_ == visible) {
+    return {};
+  }
   cursorVisible_ = visible;
   if (relativePointerEnabled_) {
     return {};
