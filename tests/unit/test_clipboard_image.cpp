@@ -45,6 +45,26 @@ PH_TEST("primehost.clipboard_image", "invalid config") {
   }
 }
 
+PH_TEST("primehost.clipboard_image", "buffer too small on set") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  std::array<uint8_t, 3> pixels = {0, 0, 0};
+  ImageData image{};
+  image.size = ImageSize{1u, 1u};
+  image.pixels = pixels;
+
+  auto status = host->setClipboardImage(image);
+  PH_CHECK(!status.has_value());
+  if (!status.has_value()) {
+    PH_CHECK(status.error().code == HostErrorCode::BufferTooSmall);
+  }
+}
+
 PH_TEST("primehost.clipboard_image", "size query") {
   auto hostResult = createHost();
   if (!hostResult) {
