@@ -937,6 +937,13 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
   }
 }
 
+- (void)tabletPoint:(NSEvent*)event {
+  if (self.host) {
+    NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
+    self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Move, PrimeHost::PointerDeviceType::Pen, p, event);
+  }
+}
+
 - (void)touchesBeganWithEvent:(NSEvent*)event {
   if (self.host) {
     self.host->handleTouches(self.surfaceId, self, event, PrimeHost::PointerPhase::Down);
