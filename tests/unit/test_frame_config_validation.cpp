@@ -55,6 +55,11 @@ PH_TEST("primehost.frameconfig", "validation rejects invalid settings") {
   auto platformStatus = validateFrameConfig(platformCapped, caps);
   PH_CHECK(platformStatus.has_value());
 
+  FrameConfig badInterval = config;
+  badInterval.frameInterval = std::chrono::nanoseconds(0);
+  auto badIntervalStatus = validateFrameConfig(badInterval, caps);
+  PH_CHECK(!badIntervalStatus.has_value());
+
   FrameConfig badLatency = config;
   badLatency.maxFrameLatency = 4u;
   auto badLatencyStatus = validateFrameConfig(badLatency, caps);

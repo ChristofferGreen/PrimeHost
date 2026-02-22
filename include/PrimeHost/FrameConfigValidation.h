@@ -13,6 +13,9 @@ inline bool maskHas(ColorFormatMask mask, ColorFormat format) {
 }
 
 inline HostStatus validateFrameConfig(const FrameConfig& config, const SurfaceCapabilities& caps) {
+  if (config.frameInterval && config.frameInterval->count() <= 0) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
   if (config.bufferCount != 0u) {
     if (config.bufferCount < caps.minBufferCount || config.bufferCount > caps.maxBufferCount) {
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
