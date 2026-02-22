@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace PrimeHost {
 
@@ -18,6 +19,16 @@ inline float normalizeTwistDegrees(float degrees) {
     result += 360.0f;
   }
   return result;
+}
+
+inline std::optional<float> analogButtonValue(bool isAnalog, float value) {
+  if (!isAnalog) {
+    return std::nullopt;
+  }
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+  return std::clamp(value, 0.0f, 1.0f);
 }
 
 } // namespace PrimeHost

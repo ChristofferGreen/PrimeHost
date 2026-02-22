@@ -711,7 +711,10 @@ public:
   void handleHostLimiterTick();
   void handleGamepadConnected(GCController* controller);
   void handleGamepadDisconnected(GCController* controller);
-  void enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value);
+  void enqueueGamepadButton(uint32_t deviceId,
+                            uint32_t controlId,
+                            bool pressed,
+                            std::optional<float> value);
   void enqueueGamepadAxis(uint32_t deviceId, uint32_t controlId, float value);
   void releaseRelativePointer();
   void handleHidDeviceAttached(IOHIDDeviceRef device);
@@ -4021,9 +4024,10 @@ void HostMac::handleGamepadConnected(GCController* controller) {
         return;
       }
       button.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
-        (void)input;
+        bool analog = input ? static_cast<bool>(input.isAnalog) : false;
+        auto optionalValue = analogButtonValue(analog, value);
         dispatch_to_main(^{
-          host->enqueueGamepadButton(deviceId, controlId, pressed, value);
+          host->enqueueGamepadButton(deviceId, controlId, pressed, optionalValue);
         });
       };
     };
@@ -4036,10 +4040,22 @@ void HostMac::handleGamepadConnected(GCController* controller) {
         (void)xValue;
         (void)yValue;
         dispatch_to_main(^{
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadUp), pad.up.isPressed, pad.up.value);
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadDown), pad.down.isPressed, pad.down.value);
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadLeft), pad.left.isPressed, pad.left.value);
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadRight), pad.right.isPressed, pad.right.value);
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadUp),
+                                     pad.up.isPressed,
+                                     analogButtonValue(pad.up.isAnalog, pad.up.value));
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadDown),
+                                     pad.down.isPressed,
+                                     analogButtonValue(pad.down.isAnalog, pad.down.value));
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadLeft),
+                                     pad.left.isPressed,
+                                     analogButtonValue(pad.left.isAnalog, pad.left.value));
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadRight),
+                                     pad.right.isPressed,
+                                     analogButtonValue(pad.right.isAnalog, pad.right.value));
         });
       };
     };
@@ -4121,32 +4137,50 @@ void HostMac::handleGamepadConnected(GCController* controller) {
         (void)xValue;
         (void)yValue;
         dispatch_to_main(^{
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadUp), pad.up.isPressed, pad.up.value);
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadDown), pad.down.isPressed, pad.down.value);
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadLeft), pad.left.isPressed, pad.left.value);
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::DpadRight), pad.right.isPressed, pad.right.value);
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadUp),
+                                     pad.up.isPressed,
+                                     analogButtonValue(pad.up.isAnalog, pad.up.value));
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadDown),
+                                     pad.down.isPressed,
+                                     analogButtonValue(pad.down.isAnalog, pad.down.value));
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadLeft),
+                                     pad.left.isPressed,
+                                     analogButtonValue(pad.left.isAnalog, pad.left.value));
+          host->enqueueGamepadButton(deviceId,
+                                     static_cast<uint32_t>(GamepadButtonId::DpadRight),
+                                     pad.right.isPressed,
+                                     analogButtonValue(pad.right.isAnalog, pad.right.value));
         });
       };
     }
     if (gamepad.buttonA) {
       gamepad.buttonA.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+        bool analog = input ? static_cast<bool>(input.isAnalog) : false;
+        auto optionalValue = analogButtonValue(analog, value);
         dispatch_to_main(^{
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::South), pressed, value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::South), pressed, optionalValue);
         });
       };
     }
     if (gamepad.buttonX) {
       gamepad.buttonX.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+        bool analog = input ? static_cast<bool>(input.isAnalog) : false;
+        auto optionalValue = analogButtonValue(analog, value);
         dispatch_to_main(^{
-          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::West), pressed, value);
+          host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::West), pressed, optionalValue);
         });
       };
     }
     if (@available(macOS 10.15, *)) {
       if (gamepad.buttonMenu) {
         gamepad.buttonMenu.valueChangedHandler = ^(GCControllerButtonInput* input, float value, BOOL pressed) {
+          bool analog = input ? static_cast<bool>(input.isAnalog) : false;
+          auto optionalValue = analogButtonValue(analog, value);
           dispatch_to_main(^{
-            host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::Start), pressed, value);
+            host->enqueueGamepadButton(deviceId, static_cast<uint32_t>(GamepadButtonId::Start), pressed, optionalValue);
           });
         };
       }
@@ -4294,7 +4328,10 @@ void HostMac::handleThermalStateChange() {
   }
 }
 
-void HostMac::enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value) {
+void HostMac::enqueueGamepadButton(uint32_t deviceId,
+                                   uint32_t controlId,
+                                   bool pressed,
+                                   std::optional<float> value) {
   GamepadButtonEvent button{};
   button.deviceId = deviceId;
   button.controlId = controlId;
