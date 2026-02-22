@@ -3748,8 +3748,12 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
     pointer.y = static_cast<int32_t>(std::lround(location.y));
     if (phase == PointerPhase::Move) {
       NSPoint previous = [touch previousLocationInView:view];
-      pointer.deltaX = static_cast<int32_t>(std::lround(location.x - previous.x));
-      pointer.deltaY = static_cast<int32_t>(std::lround(location.y - previous.y));
+      if (auto dx = normalizedPointerDelta(location.x - previous.x)) {
+        pointer.deltaX = dx.value();
+      }
+      if (auto dy = normalizedPointerDelta(location.y - previous.y)) {
+        pointer.deltaY = dy.value();
+      }
     }
     pointer.buttonMask = 0u;
     pointer.isPrimary = (touch == primary);
