@@ -80,6 +80,8 @@ struct SurfaceState {
   FrameConfig frameConfig{};
   CursorShape cursorShape = CursorShape::Arrow;
   NSCursor* customCursor = nullptr;
+  bool headless = false;
+  SurfaceSize headlessSize{};
   uint64_t frameIndex = 0u;
   std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
   std::optional<std::chrono::nanoseconds> displayInterval{};
@@ -1307,7 +1309,7 @@ HostResult<HostCapabilities> HostMac::hostCapabilities() const {
   } else {
     caps.supportsHaptics = false;
   }
-  caps.supportsHeadless = false;
+  caps.supportsHeadless = true;
   return caps;
 }
 
@@ -1507,6 +1509,24 @@ HostStatus HostMac::setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) {
 
 HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   SurfaceId surfaceId{nextSurfaceId_++};
+
+  if (config.headless) {
+    auto state = std::make_unique<SurfaceState>();
+    state->surfaceId = surfaceId;
+    state->headless = true;
+    state->headlessSize = SurfaceSize{config.width, config.height};
+    surfaces_.emplace(surfaceId.value, std::move(state));
+
+    Event created{};
+    created.scope = Event::Scope::Surface;
+    created.surfaceId = surfaceId;
+    created.time = std::chrono::steady_clock::now();
+    created.payload = LifecycleEvent{LifecyclePhase::Created};
+    enqueueEvent(std::move(created));
+
+    updateDisplayLinkState();
+    return surfaceId;
+  }
 
   NSUInteger styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
   if (config.resizable) {
@@ -1763,7 +1783,13 @@ HostStatus HostMac::setSurfaceTitle(SurfaceId surfaceId, Utf8TextView title) {
 
 HostResult<SurfaceSize> HostMac::surfaceSize(SurfaceId surfaceId) const {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return surface->headlessSize;
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSRect frame = [surface->window contentRectForFrameRect:surface->window.frame];
@@ -1775,7 +1801,14 @@ HostResult<SurfaceSize> HostMac::surfaceSize(SurfaceId surfaceId) const {
 
 HostStatus HostMac::setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    surface->headlessSize = SurfaceSize{width, height};
+    return {};
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (width == 0u || height == 0u) {
@@ -2607,7 +2640,13 @@ HostResult<Utf8TextView> HostMac::appPath(AppPathType type, std::span<char> buff
 
 HostResult<float> HostMac::surfaceScale(SurfaceId surfaceId) const {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->window) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return 1.0f;
+  }
+  if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   return static_cast<float>(surface->window.backingScaleFactor);
@@ -3682,6 +3721,9 @@ void HostMac::handleWindowClosed(uint64_t surfaceId) {
 }
 
 HostStatus HostMac::presentEmptyFrame(SurfaceState& surface) {
+  if (surface.headless) {
+    return {};
+  }
   if (!surface.layer || !surface.commandQueue) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }

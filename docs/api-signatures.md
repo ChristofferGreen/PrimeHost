@@ -172,6 +172,7 @@ struct SurfaceConfig {
   uint32_t width = 0u;
   uint32_t height = 0u;
   bool resizable = true;
+  bool headless = false;
   std::optional<std::string> title;
 };
 

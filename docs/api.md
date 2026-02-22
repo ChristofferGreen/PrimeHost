@@ -51,6 +51,10 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Minimize/maximize/fullscreen controls per surface.
 - Implemented: `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`.
 
+## Headless Surfaces (Draft)
+- Headless surfaces create a render/pacing target without a native window.
+- Implemented: `SurfaceConfig::headless` (macOS).
+
 ## Cursor (Draft)
 - Standard cursor shapes plus custom cursor image support.
 - Defaults: system arrow cursor; cursor visible unless explicitly hidden.
@@ -356,7 +360,7 @@ for (const auto& evt : batch->events) {
 ```
 - Haptics for supported devices (implemented for gamepad rumble on macOS).
 - Window icon updates (implemented on macOS).
-- Offscreen/headless surfaces (draft).
+- Offscreen/headless surfaces (implemented on macOS).
 - Clipboard read/write (implemented), IME composition events (draft).
 - Cursor visibility + relative pointer mode (implemented), confine (draft).
 - Window state controls and DPI/scale queries (implemented).
