@@ -3823,6 +3823,7 @@ void HostMac::handleFocus(uint64_t surfaceId, bool focused) {
   event.time = std::chrono::steady_clock::now();
   event.payload = focus;
   enqueueEvent(std::move(event));
+  requestFrameForSurface(surface);
 }
 
 void HostMac::handleGamepadConnected(GCController* controller) {
@@ -4217,6 +4218,9 @@ void HostMac::handleWindowClosed(uint64_t surfaceId) {
 
   auto it = surfaces_.find(surfaceId);
   if (it != surfaces_.end()) {
+    if (focusedSurface_ && focusedSurface_->value == surfaceId) {
+      focusedSurface_.reset();
+    }
     if (relativePointerEnabled_ && relativePointerSurface_ && relativePointerSurface_->value == surfaceId) {
       releaseRelativePointer();
     }
