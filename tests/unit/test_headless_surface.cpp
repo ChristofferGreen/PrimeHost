@@ -44,6 +44,12 @@ PH_TEST("primehost.headless", "create and size") {
 
   auto setPos = host->setSurfacePosition(surface.value(), 10, 20);
   PH_CHECK(setPos.has_value());
+  auto updatedPos = host->surfacePosition(surface.value());
+  PH_CHECK(updatedPos.has_value());
+  if (updatedPos) {
+    PH_CHECK(updatedPos->x == 10);
+    PH_CHECK(updatedPos->y == 20);
+  }
 
   auto titleStatus = host->setSurfaceTitle(surface.value(), "Headless");
   PH_CHECK(titleStatus.has_value());

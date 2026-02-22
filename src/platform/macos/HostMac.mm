@@ -82,6 +82,7 @@ struct SurfaceState {
   NSCursor* customCursor = nullptr;
   bool headless = false;
   SurfaceSize headlessSize{};
+  SurfacePoint headlessPosition{};
   uint32_t headlessDisplayId = 0u;
   uint64_t frameIndex = 0u;
   std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
@@ -1902,7 +1903,7 @@ HostResult<SurfacePoint> HostMac::surfacePosition(SurfaceId surfaceId) const {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (surface->headless) {
-    return SurfacePoint{};
+    return surface->headlessPosition;
   }
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
@@ -1920,6 +1921,7 @@ HostStatus HostMac::setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (surface->headless) {
+    surface->headlessPosition = SurfacePoint{x, y};
     return {};
   }
   if (!surface->window) {
