@@ -150,6 +150,11 @@ config.format.channels = 2;
 config.periodFrames = 256;
 config.bufferFrames = 512;
 
+auto validation = PrimeHost::validateAudioStreamConfig(config);
+if (!validation) {
+  return;
+}
+
 auto callback = [](std::span<float> interleaved,
                    const PrimeHost::AudioCallbackContext& ctx,
                    void* userData) {
