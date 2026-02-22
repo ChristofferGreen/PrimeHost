@@ -74,6 +74,23 @@ PH_TEST("primehost.frameconfig", "set config invalid values") {
     PH_CHECK(statusVsync.error().code == HostErrorCode::InvalidConfig);
   }
 
+  FrameConfig capped{};
+  capped.framePolicy = FramePolicy::Capped;
+  capped.frameInterval = std::chrono::nanoseconds(0);
+  auto statusCapped = host->setFrameConfig(surface.value(), capped);
+  PH_CHECK(statusCapped.has_value());
+  if (statusCapped.has_value()) {
+    auto resolved = host->frameConfig(surface.value());
+    PH_CHECK(resolved.has_value());
+    if (resolved) {
+      PH_CHECK(resolved->framePolicy == FramePolicy::Capped);
+      PH_CHECK(resolved->frameInterval.has_value());
+      if (resolved->frameInterval) {
+        PH_CHECK(resolved->frameInterval->count() > 0);
+      }
+    }
+  }
+
   auto destroyed = host->destroySurface(surface.value());
   PH_CHECK(destroyed.has_value());
 }
