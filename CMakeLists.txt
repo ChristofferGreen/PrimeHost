@@ -123,6 +123,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_surface_scale.cpp
     tests/unit/test_surface_constraints.cpp
     tests/unit/test_displays.cpp
+    tests/unit/test_display_hdr.cpp
     tests/unit/test_surface_display.cpp
     tests/unit/test_host_extensions.cpp
     tests/unit/test_fps.cpp

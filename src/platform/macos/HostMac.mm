@@ -541,6 +541,7 @@ public:
   HostResult<size_t> devices(std::span<DeviceInfo> outDevices) const override;
   HostResult<size_t> displays(std::span<DisplayInfo> outDisplays) const override;
   HostResult<DisplayInfo> displayInfo(uint32_t displayId) const override;
+  HostResult<DisplayHdrInfo> displayHdrInfo(uint32_t displayId) const override;
   HostResult<uint32_t> surfaceDisplay(SurfaceId surfaceId) const override;
   HostStatus setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) override;
 
@@ -1306,6 +1307,28 @@ HostResult<DisplayInfo> HostMac::displayInfo(uint32_t displayId) const {
     return info;
   }
   return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+}
+
+HostResult<DisplayHdrInfo> HostMac::displayHdrInfo(uint32_t displayId) const {
+  NSScreen* target = nil;
+  for (NSScreen* screen in [NSScreen screens]) {
+    NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+    if (screenNumber && screenNumber.unsignedIntValue == displayId) {
+      target = screen;
+      break;
+    }
+  }
+  if (!target) {
+    return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+  }
+
+  DisplayHdrInfo info{};
+  if (@available(macOS 10.15, *)) {
+    info.maxEdr = static_cast<float>(target.maximumExtendedDynamicRangeColorComponentValue);
+    info.maxEdrPotential = static_cast<float>(target.maximumPotentialExtendedDynamicRangeColorComponentValue);
+    info.supportsHdr = info.maxEdr > 1.0f || info.maxEdrPotential > 1.0f;
+  }
+  return info;
 }
 
 HostResult<uint32_t> HostMac::surfaceDisplay(SurfaceId surfaceId) const {

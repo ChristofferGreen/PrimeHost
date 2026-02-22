@@ -13,6 +13,7 @@ platform-neutral and stable across backends.
 - `SurfacePoint`: logical surface position in points.
 - `SafeAreaInsets`: per-surface safe-area insets.
 - `DisplayInfo`: display bounds, scale, refresh, and identity.
+- `DisplayHdrInfo`: HDR/EDR capability and headroom.
 - `PermissionType`, `PermissionStatus`: permission categories and states.
 - `AppPathType`: standard app path categories.
 - `FileDialogMode`, `FileDialogConfig`, `FileDialogResult`: native file dialog settings and results.
@@ -61,6 +62,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## HDR / EDR (Draft)
 - Query display HDR/EDR capability and nominal luminance ranges.
 - Default: HDR disabled unless explicitly enabled per surface or display.
+- Implemented: `displayHdrInfo` (macOS, EDR headroom values).
 
 ## Permissions (Draft)
 - Camera/microphone/location/notifications/photos permission queries and requests.

@@ -118,6 +118,12 @@ struct DisplayInfo {
   bool isPrimary = false;
 };
 
+struct DisplayHdrInfo {
+  bool supportsHdr = false;
+  float maxEdr = 1.0f;
+  float maxEdrPotential = 1.0f;
+};
+
 struct FrameTiming {
   std::chrono::steady_clock::time_point time;
   std::chrono::nanoseconds delta{0};
@@ -387,6 +393,7 @@ public:
   virtual HostResult<size_t> devices(std::span<DeviceInfo> outDevices) const = 0;
   virtual HostResult<size_t> displays(std::span<DisplayInfo> outDisplays) const = 0;
   virtual HostResult<DisplayInfo> displayInfo(uint32_t displayId) const = 0;
+  virtual HostResult<DisplayHdrInfo> displayHdrInfo(uint32_t displayId) const = 0;
   virtual HostResult<uint32_t> surfaceDisplay(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) = 0;
 
