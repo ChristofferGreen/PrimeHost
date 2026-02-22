@@ -3637,7 +3637,7 @@ void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDevic
   pointer.x = static_cast<int32_t>(std::lround(point.x));
   pointer.y = static_cast<int32_t>(std::lround(point.y));
   if (deviceType == PointerDeviceType::Pen && event) {
-    pointer.pressure = static_cast<float>(event.pressure);
+    pointer.pressure = normalizedPressure(static_cast<float>(event.pressure));
     NSPoint tilt = event.tilt;
     pointer.tiltX = tiltNormalizedToDegrees(static_cast<float>(tilt.x));
     pointer.tiltY = tiltNormalizedToDegrees(static_cast<float>(tilt.y));

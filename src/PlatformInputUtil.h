@@ -33,6 +33,13 @@ inline std::optional<float> analogButtonValue(bool isAnalog, float value) {
   return std::clamp(value, 0.0f, 1.0f);
 }
 
+inline std::optional<float> normalizedPressure(float value) {
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+  return std::clamp(value, 0.0f, 1.0f);
+}
+
 inline float clampGamepadAxisValue(uint32_t controlId, float value) {
   if (!std::isfinite(value)) {
     return 0.0f;

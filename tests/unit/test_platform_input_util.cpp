@@ -51,4 +51,15 @@ PH_TEST("primehost.input.util", "clamp gamepad axis value ignores non finite") {
   PH_CHECK(value == 0.0f);
 }
 
+PH_TEST("primehost.input.util", "normalized pressure") {
+  PH_CHECK(normalizedPressure(-1.0f).value() == 0.0f);
+  PH_CHECK(normalizedPressure(0.5f).value() == 0.5f);
+  PH_CHECK(normalizedPressure(2.0f).value() == 1.0f);
+}
+
+PH_TEST("primehost.input.util", "normalized pressure ignores non finite") {
+  auto value = normalizedPressure(std::numeric_limits<float>::quiet_NaN());
+  PH_CHECK(!value.has_value());
+}
+
 TEST_SUITE_END();
