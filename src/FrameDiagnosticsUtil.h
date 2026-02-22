@@ -12,9 +12,9 @@ inline FrameDiagnostics buildFrameDiagnostics(std::optional<std::chrono::nanosec
                                               FramePolicy policy,
                                               FramePacingSource source) {
   FrameDiagnostics diag{};
+  diag.actualInterval = actual;
   if (target && target->count() > 0) {
     diag.targetInterval = *target;
-    diag.actualInterval = actual;
     if (actual > *target) {
       diag.missedDeadline = true;
       const uint64_t intervals = static_cast<uint64_t>(actual / *target);

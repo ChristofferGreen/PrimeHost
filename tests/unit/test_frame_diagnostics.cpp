@@ -43,6 +43,8 @@ PH_TEST("primehost.framediagnostics", "handles missing target") {
                                     std::chrono::milliseconds(16),
                                     FramePolicy::Capped,
                                     FramePacingSource::HostLimiter);
+  PH_CHECK(diag.actualInterval == std::chrono::milliseconds(16));
+  PH_CHECK(diag.targetInterval.count() == 0);
   PH_CHECK(!diag.missedDeadline);
   PH_CHECK(diag.droppedFrames == 0u);
   PH_CHECK(diag.wasThrottled);
