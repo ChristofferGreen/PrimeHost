@@ -113,6 +113,11 @@ PH_TEST("primehost.headless", "create and size") {
       if (getDisplay) {
         PH_CHECK(getDisplay.value() == displays[0].displayId);
       }
+      auto scale = host->surfaceScale(surface.value());
+      PH_CHECK(scale.has_value());
+      if (scale) {
+        PH_CHECK(scale.value() == displays[0].scale);
+      }
     }
   }
 

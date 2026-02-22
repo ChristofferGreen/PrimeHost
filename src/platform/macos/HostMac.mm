@@ -2737,7 +2737,16 @@ HostResult<float> HostMac::surfaceScale(SurfaceId surfaceId) const {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (surface->headless) {
-    return 1.0f;
+    if (surface->headlessDisplayId == 0u) {
+      return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
+    }
+    for (NSScreen* screen in [NSScreen screens]) {
+      NSNumber* screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+      if (screenNumber && screenNumber.unsignedIntValue == surface->headlessDisplayId) {
+        return static_cast<float>(screen.backingScaleFactor);
+      }
+    }
+    return std::unexpected(HostError{HostErrorCode::InvalidDisplay});
   }
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
