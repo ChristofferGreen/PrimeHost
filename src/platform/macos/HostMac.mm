@@ -1860,6 +1860,7 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       return std::unexpected(contentTypes.error());
     }
     NSSavePanel* panel = [NSSavePanel savePanel];
+    panel.canCreateDirectories = config.canCreateDirectories ? YES : NO;
     if (title) {
       panel.title = title;
     }

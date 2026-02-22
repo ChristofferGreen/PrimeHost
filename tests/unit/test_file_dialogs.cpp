@@ -70,6 +70,15 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
   if (!invalidName.has_value()) {
     PH_CHECK(invalidName.error().code == HostErrorCode::InvalidConfig);
   }
+
+  FileDialogConfig saveConfig{};
+  saveConfig.mode = FileDialogMode::SaveFile;
+  saveConfig.canCreateDirectories = false;
+  auto saveResult = host->fileDialog(saveConfig, emptyBuffer);
+  PH_CHECK(!saveResult.has_value());
+  if (!saveResult.has_value()) {
+    PH_CHECK(saveResult.error().code == HostErrorCode::BufferTooSmall);
+  }
 }
 
 TEST_SUITE_END();
