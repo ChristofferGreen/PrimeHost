@@ -141,6 +141,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_headless_surface.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
+    tests/unit/test_frame_config_set.cpp
     tests/unit/test_frame_config_query.cpp
     tests/unit/test_frame_config_util.cpp
     tests/unit/test_frame_diagnostics.cpp
