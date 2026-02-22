@@ -2814,14 +2814,23 @@ HostStatus HostMac::setSurfaceMinSize(SurfaceId surfaceId, uint32_t width, uint3
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (surface->headless) {
+    if (width == 0u && height == 0u) {
+      return {};
+    }
+    if (width == 0u || height == 0u) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
     return {};
   }
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
-  if (width == 0u || height == 0u) {
+  if (width == 0u && height == 0u) {
     surface->window.contentMinSize = NSMakeSize(0.0, 0.0);
     return {};
+  }
+  if (width == 0u || height == 0u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   surface->window.contentMinSize = NSMakeSize(static_cast<CGFloat>(width),
                                               static_cast<CGFloat>(height));
@@ -2834,14 +2843,23 @@ HostStatus HostMac::setSurfaceMaxSize(SurfaceId surfaceId, uint32_t width, uint3
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   if (surface->headless) {
+    if (width == 0u && height == 0u) {
+      return {};
+    }
+    if (width == 0u || height == 0u) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
     return {};
   }
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
-  if (width == 0u || height == 0u) {
+  if (width == 0u && height == 0u) {
     surface->window.contentMaxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
     return {};
+  }
+  if (width == 0u || height == 0u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
   surface->window.contentMaxSize = NSMakeSize(static_cast<CGFloat>(width),
                                               static_cast<CGFloat>(height));
