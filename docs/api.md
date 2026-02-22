@@ -141,6 +141,9 @@ if (result && result.value() > 0u) {
   }
 }
 ```
+Note: `fileDialogPaths` writes all selected paths into the provided byte buffer and
+returns spans into that buffer. Size the buffer to hold the combined UTF-8 bytes of
+all expected paths.
 
 Example (save dialog):
 ```cpp
