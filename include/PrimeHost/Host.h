@@ -222,6 +222,13 @@ struct SurfacePoint {
   int32_t y = 0;
 };
 
+struct SafeAreaInsets {
+  float top = 0.0f;
+  float left = 0.0f;
+  float right = 0.0f;
+  float bottom = 0.0f;
+};
+
 struct FileDialogConfig {
   FileDialogMode mode = FileDialogMode::OpenFile;
   std::optional<Utf8TextView> title;
@@ -482,6 +489,7 @@ public:
   virtual HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) = 0;
   virtual HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) = 0;
+  virtual HostResult<SafeAreaInsets> surfaceSafeAreaInsets(SurfaceId surfaceId) const = 0;
   virtual HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) = 0;
   virtual HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) = 0;
   virtual HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) = 0;

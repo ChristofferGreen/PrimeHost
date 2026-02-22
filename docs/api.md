@@ -11,6 +11,7 @@ platform-neutral and stable across backends.
 - `SurfaceConfig`: surface creation settings.
 - `SurfaceSize`: logical surface size in points.
 - `SurfacePoint`: logical surface position in points.
+- `SafeAreaInsets`: per-surface safe-area insets.
 - `DisplayInfo`: display bounds, scale, refresh, and identity.
 - `PermissionType`, `PermissionStatus`: permission categories and states.
 - `AppPathType`: standard app path categories.
@@ -55,6 +56,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Safe-Area Insets (Draft)
 - Per-surface safe-area insets for notches/rounded corners.
 - Default insets: all zeros when not applicable.
+- Implemented: `surfaceSafeAreaInsets` (macOS).
 
 ## HDR / EDR (Draft)
 - Query display HDR/EDR capability and nominal luminance ranges.

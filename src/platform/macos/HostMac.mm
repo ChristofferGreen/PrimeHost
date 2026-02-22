@@ -559,6 +559,7 @@ public:
   HostStatus setSurfaceSize(SurfaceId surfaceId, uint32_t width, uint32_t height) override;
   HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const override;
   HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) override;
+  HostResult<SafeAreaInsets> surfaceSafeAreaInsets(SurfaceId surfaceId) const override;
   HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) override;
   HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
   HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
@@ -1639,6 +1640,22 @@ HostStatus HostMac::setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y
   frame.origin.y = static_cast<CGFloat>(y);
   [surface->window setFrame:frame display:YES];
   return {};
+}
+
+HostResult<SafeAreaInsets> HostMac::surfaceSafeAreaInsets(SurfaceId surfaceId) const {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->view) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  SafeAreaInsets insets{};
+  if (@available(macOS 11.0, *)) {
+    NSEdgeInsets nsInsets = surface->view.safeAreaInsets;
+    insets.top = static_cast<float>(nsInsets.top);
+    insets.left = static_cast<float>(nsInsets.left);
+    insets.right = static_cast<float>(nsInsets.right);
+    insets.bottom = static_cast<float>(nsInsets.bottom);
+  }
+  return insets;
 }
 
 HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {

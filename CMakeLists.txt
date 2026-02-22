@@ -112,6 +112,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_surface_title.cpp
     tests/unit/test_surface_size.cpp
     tests/unit/test_surface_position.cpp
+    tests/unit/test_safe_area.cpp
     tests/unit/test_cursor_visible.cpp
     tests/unit/test_surface_state.cpp
     tests/unit/test_clipboard.cpp
