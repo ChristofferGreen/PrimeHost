@@ -86,7 +86,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## System Tray / Menu Bar (Draft)
 - Create/remove tray items and menu entries.
 - Default: unsupported on platforms without a tray/menu bar.
-- Implemented: `createTrayItem`, `updateTrayItemTitle`, `removeTrayItem` (macOS: returns `Unsupported`).
+- Implemented: `createTrayItem`, `updateTrayItemTitle`, `removeTrayItem` (macOS).
 
 ## Power / Thermal (Draft)
 - Global events for low-power mode and thermal warnings.

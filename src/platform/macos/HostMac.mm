@@ -448,12 +448,14 @@ private:
   Callbacks callbacks_{};
   uint64_t nextSurfaceId_ = 1u;
   uint32_t nextDeviceId_ = 3u;
+  uint64_t nextTrayId_ = 1u;
   CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
   bool relativePointerEnabled_ = false;
   std::optional<SurfaceId> relativePointerSurface_{};
   uint64_t nextIdleSleepToken_ = 1u;
   std::unordered_map<uint64_t, IOPMAssertionID> idleSleepAssertions_;
+  std::unordered_map<uint64_t, NSStatusItem*> trayItems_;
   mutable std::string localeLanguage_;
   mutable std::string localeRegion_;
   mutable std::string imeLanguage_;
@@ -856,6 +858,13 @@ HostMac::~HostMac() {
     }
   }
   idleSleepAssertions_.clear();
+  if (!trayItems_.empty()) {
+    NSStatusBar* bar = [NSStatusBar systemStatusBar];
+    for (const auto& entry : trayItems_) {
+      [bar removeStatusItem:entry.second];
+    }
+    trayItems_.clear();
+  }
   if (gamepadConnectObserver_) {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadConnectObserver_];
     gamepadConnectObserver_ = nil;
@@ -1699,19 +1708,57 @@ HostStatus HostMac::endBackgroundTask(uint64_t token) {
 }
 
 HostResult<uint64_t> HostMac::createTrayItem(Utf8TextView title) {
-  (void)title;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  NSStatusItem* item = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
+  if (!item) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  if (!title.empty()) {
+    NSString* nsTitle = [[NSString alloc] initWithBytes:title.data()
+                                                 length:static_cast<NSUInteger>(title.size())
+                                               encoding:NSUTF8StringEncoding];
+    if (!nsTitle) {
+      return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+    }
+    if (!item.button) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    item.button.title = nsTitle;
+  }
+  uint64_t trayId = nextTrayId_++;
+  if (trayId == 0u) {
+    trayId = nextTrayId_++;
+  }
+  trayItems_[trayId] = item;
+  return trayId;
 }
 
 HostStatus HostMac::updateTrayItemTitle(uint64_t trayId, Utf8TextView title) {
-  (void)trayId;
-  (void)title;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  auto it = trayItems_.find(trayId);
+  if (it == trayItems_.end()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  NSString* nsTitle = [[NSString alloc] initWithBytes:title.data()
+                                               length:static_cast<NSUInteger>(title.size())
+                                             encoding:NSUTF8StringEncoding];
+  if (!nsTitle) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  NSStatusItem* item = it->second;
+  if (!item.button) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  item.button.title = nsTitle;
+  return {};
 }
 
 HostStatus HostMac::removeTrayItem(uint64_t trayId) {
-  (void)trayId;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  auto it = trayItems_.find(trayId);
+  if (it == trayItems_.end()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+  [[NSStatusBar systemStatusBar] removeStatusItem:it->second];
+  trayItems_.erase(it);
+  return {};
 }
 
 HostStatus HostMac::setRelativePointerCapture(SurfaceId surfaceId, bool enabled) {

@@ -73,9 +73,23 @@ PH_TEST("primehost.extensions", "background and tray unsupported") {
   }
 
   auto tray = host->createTrayItem("PrimeHost");
-  PH_CHECK(!tray.has_value());
   if (!tray.has_value()) {
-    PH_CHECK(tray.error().code == HostErrorCode::Unsupported);
+    bool allowed = tray.error().code == HostErrorCode::PlatformFailure;
+    allowed = allowed || tray.error().code == HostErrorCode::Unsupported;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto update = host->updateTrayItemTitle(tray.value(), "PrimeHost 2");
+  PH_CHECK(update.has_value());
+
+  auto remove = host->removeTrayItem(tray.value());
+  PH_CHECK(remove.has_value());
+
+  auto removeAgain = host->removeTrayItem(tray.value());
+  PH_CHECK(!removeAgain.has_value());
+  if (!removeAgain.has_value()) {
+    PH_CHECK(removeAgain.error().code == HostErrorCode::InvalidConfig);
   }
 }
 
