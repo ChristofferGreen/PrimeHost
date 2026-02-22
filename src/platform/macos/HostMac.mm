@@ -486,6 +486,9 @@ public:
   HostStatus setClipboardText(Utf8TextView text) override;
   HostResult<FileDialogResult> fileDialog(const FileDialogConfig& config,
                                           std::span<char> buffer) const override;
+  HostResult<size_t> fileDialogPaths(const FileDialogConfig& config,
+                                     std::span<TextSpan> outPaths,
+                                     std::span<char> buffer) const override;
   HostResult<size_t> appPathSize(AppPathType type) const override;
   HostResult<Utf8TextView> appPath(AppPathType type, std::span<char> buffer) const override;
   HostResult<float> surfaceScale(SurfaceId surfaceId) const override;
@@ -1654,10 +1657,31 @@ HostResult<FileDialogResult> HostMac::fileDialog(const FileDialogConfig& config,
   if (buffer.empty()) {
     return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
   }
-
+  std::array<TextSpan, 1> spans{};
+  auto count = fileDialogPaths(config, spans, buffer);
+  if (!count) {
+    return std::unexpected(count.error());
+  }
   FileDialogResult result{};
   result.accepted = false;
   result.path = Utf8TextView{buffer.data(), 0u};
+  if (count.value() == 0u) {
+    if (!buffer.empty()) {
+      buffer[0] = '\0';
+    }
+    return result;
+  }
+  result.accepted = true;
+  result.path = Utf8TextView{buffer.data() + spans[0].offset, spans[0].length};
+  return result;
+}
+
+HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
+                                            std::span<TextSpan> outPaths,
+                                            std::span<char> buffer) const {
+  if (outPaths.empty() || buffer.empty()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
 
   NSString* title = config.title ? utf8_to_nsstring(*config.title) : nil;
   NSString* defaultPath = config.defaultPath ? utf8_to_nsstring(*config.defaultPath) : nil;
@@ -1669,7 +1693,7 @@ HostResult<FileDialogResult> HostMac::fileDialog(const FileDialogConfig& config,
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = NO;
-    panel.allowsMultipleSelection = NO;
+    panel.allowsMultipleSelection = (outPaths.size() > 1u);
     if (title) {
       panel.title = title;
     }
@@ -1679,25 +1703,35 @@ HostResult<FileDialogResult> HostMac::fileDialog(const FileDialogConfig& config,
     }
     NSInteger modal = [panel runModal];
     if (modal != NSModalResponseOK) {
-      buffer[0] = '\0';
-      return result;
+      if (!buffer.empty()) {
+        buffer[0] = '\0';
+      }
+      return static_cast<size_t>(0u);
     }
-    NSURL* url = panel.URL;
-    if (!url) {
+    NSArray<NSURL*>* urls = panel.URLs;
+    if (!urls) {
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
-    NSString* path = url.path;
-    NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
-    if (!data) {
-      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
-    }
-    if (data.length > buffer.size()) {
+    if (static_cast<size_t>(urls.count) > outPaths.size()) {
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }
-    std::memcpy(buffer.data(), data.bytes, data.length);
-    result.accepted = true;
-    result.path = Utf8TextView{buffer.data(), static_cast<size_t>(data.length)};
-    return result;
+    size_t offset = 0u;
+    for (NSUInteger i = 0; i < urls.count; ++i) {
+      NSURL* url = urls[i];
+      NSString* path = url.path;
+      NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
+      if (!data) {
+        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      }
+      if (offset + data.length > buffer.size()) {
+        return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+      }
+      std::memcpy(buffer.data() + offset, data.bytes, data.length);
+      outPaths[i] = TextSpan{static_cast<uint32_t>(offset),
+                             static_cast<uint32_t>(data.length)};
+      offset += static_cast<size_t>(data.length);
+    }
+    return static_cast<size_t>(urls.count);
   }
 
   if (config.mode == FileDialogMode::SaveFile) {
@@ -1717,8 +1751,10 @@ HostResult<FileDialogResult> HostMac::fileDialog(const FileDialogConfig& config,
     }
     NSInteger modal = [panel runModal];
     if (modal != NSModalResponseOK) {
-      buffer[0] = '\0';
-      return result;
+      if (!buffer.empty()) {
+        buffer[0] = '\0';
+      }
+      return static_cast<size_t>(0u);
     }
     NSURL* url = panel.URL;
     if (!url) {
@@ -1733,9 +1769,8 @@ HostResult<FileDialogResult> HostMac::fileDialog(const FileDialogConfig& config,
       return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
     }
     std::memcpy(buffer.data(), data.bytes, data.length);
-    result.accepted = true;
-    result.path = Utf8TextView{buffer.data(), static_cast<size_t>(data.length)};
-    return result;
+    outPaths[0] = TextSpan{0u, static_cast<uint32_t>(data.length)};
+    return static_cast<size_t>(1u);
   }
 
   return std::unexpected(HostError{HostErrorCode::InvalidConfig});

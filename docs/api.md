@@ -107,7 +107,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 
 ## File Dialogs (Draft)
 - Native open/save panels.
-- Implemented: `fileDialog` (macOS).
+- Implemented: `fileDialog`, `fileDialogPaths` (macOS).
 
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
@@ -172,7 +172,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
 - `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`, `surfaceScale`, `setSurfaceMinSize`, `setSurfaceMaxSize`
 - `Host::appPathSize`, `appPath`
-- `Host::fileDialog`
+- `Host::fileDialog`, `fileDialogPaths`
 - `Host::setGamepadRumble`
 - `Host::checkPermission`, `requestPermission`
 - `Host::beginIdleSleepInhibit`, `endIdleSleepInhibit`

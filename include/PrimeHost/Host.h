@@ -428,6 +428,9 @@ public:
   virtual HostStatus setClipboardText(Utf8TextView text) = 0;
   virtual HostResult<FileDialogResult> fileDialog(const FileDialogConfig& config,
                                                    std::span<char> buffer) const = 0;
+  virtual HostResult<size_t> fileDialogPaths(const FileDialogConfig& config,
+                                             std::span<TextSpan> outPaths,
+                                             std::span<char> buffer) const = 0;
   virtual HostResult<size_t> appPathSize(AppPathType type) const = 0;
   virtual HostResult<Utf8TextView> appPath(AppPathType type, std::span<char> buffer) const = 0;
   virtual HostResult<float> surfaceScale(SurfaceId surfaceId) const = 0;
