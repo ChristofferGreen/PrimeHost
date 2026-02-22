@@ -691,7 +691,7 @@ public:
   void handleScroll(uint64_t surfaceId, NSEvent* event);
   void handleKey(NSEvent* event, bool pressed, bool repeat);
   void handleModifiers(NSEvent* event);
-  void handleText(uint64_t surfaceId, NSString* text);
+  void handleText(uint64_t surfaceId, NSString* text, NSEvent* event);
   void handleFocus(uint64_t surfaceId, bool focused);
   void handleScreenChange(uint64_t surfaceId);
   void handleWindowClosed(uint64_t surfaceId);
@@ -1084,7 +1084,7 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
       text = (NSString*)string;
     }
     if (text) {
-      self.host->handleText(self.surfaceId, text);
+      self.host->handleText(self.surfaceId, text, [NSApp currentEvent]);
     }
   }
   [self unmarkText];
@@ -3861,7 +3861,7 @@ void HostMac::handleModifiers(NSEvent* event) {
   }
 }
 
-void HostMac::handleText(uint64_t surfaceId, NSString* text) {
+void HostMac::handleText(uint64_t surfaceId, NSString* text, NSEvent* event) {
   if (!text) {
     return;
   }
@@ -3869,6 +3869,7 @@ void HostMac::handleText(uint64_t surfaceId, NSString* text) {
   if (!surface) {
     return;
   }
+  auto eventTime = event_time_for(event);
   NSData* data = [text dataUsingEncoding:NSUTF8StringEncoding];
   if (!data || data.length == 0) {
     return;
@@ -3881,7 +3882,7 @@ void HostMac::handleText(uint64_t surfaceId, NSString* text) {
   Event evt{};
   evt.scope = Event::Scope::Surface;
   evt.surfaceId = SurfaceId{surfaceId};
-  evt.time = std::chrono::steady_clock::now();
+  evt.time = eventTime;
   evt.payload = textEvent;
   enqueueEvent(std::move(evt), std::move(utf8));
   requestFrameForSurface(surface);
