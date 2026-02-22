@@ -166,6 +166,7 @@ struct FileDialogConfig {
   std::optional<Utf8TextView> defaultName;
   std::span<const Utf8TextView> allowedExtensions;
   bool canCreateDirectories = true;
+  bool canSelectHiddenFiles = false;
 };
 
 struct FileDialogResult {

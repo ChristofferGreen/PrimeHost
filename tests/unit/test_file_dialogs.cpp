@@ -74,6 +74,7 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
   FileDialogConfig saveConfig{};
   saveConfig.mode = FileDialogMode::SaveFile;
   saveConfig.canCreateDirectories = false;
+  saveConfig.canSelectHiddenFiles = true;
   auto saveResult = host->fileDialog(saveConfig, emptyBuffer);
   PH_CHECK(!saveResult.has_value());
   if (!saveResult.has_value()) {

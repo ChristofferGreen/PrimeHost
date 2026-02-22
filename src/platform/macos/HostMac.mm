@@ -1750,6 +1750,7 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = NO;
     panel.allowsMultipleSelection = (outPaths.size() > 1u);
+    panel.showsHiddenFiles = config.canSelectHiddenFiles ? YES : NO;
     if (title) {
       panel.title = title;
     }
@@ -1810,6 +1811,7 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     panel.canChooseFiles = NO;
     panel.canChooseDirectories = YES;
     panel.allowsMultipleSelection = (outPaths.size() > 1u);
+    panel.showsHiddenFiles = config.canSelectHiddenFiles ? YES : NO;
     if (title) {
       panel.title = title;
     }
@@ -1861,6 +1863,7 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     }
     NSSavePanel* panel = [NSSavePanel savePanel];
     panel.canCreateDirectories = config.canCreateDirectories ? YES : NO;
+    panel.showsHiddenFiles = config.canSelectHiddenFiles ? YES : NO;
     if (title) {
       panel.title = title;
     }

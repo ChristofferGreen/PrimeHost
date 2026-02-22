@@ -110,6 +110,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Optional file extension filters via `FileDialogConfig::allowedExtensions`.
 - Optional default filename via `FileDialogConfig::defaultName`.
 - `canCreateDirectories` controls save panel directory creation.
+- `canSelectHiddenFiles` reveals hidden items where supported.
 - Modes: open file, open directory, save file.
 - Implemented: `fileDialog`, `fileDialogPaths` (macOS).
 
