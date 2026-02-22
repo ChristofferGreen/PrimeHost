@@ -2,6 +2,8 @@
 
 #include "tests/unit/test_helpers.h"
 
+#include <array>
+
 using namespace PrimeHost;
 
 TEST_SUITE_BEGIN("primehost.surface");
@@ -115,6 +117,31 @@ PH_TEST("primehost.surface", "surface size round-trip") {
   PH_CHECK(!fullscreenAfter.has_value());
   if (!fullscreenAfter.has_value()) {
     PH_CHECK(fullscreenAfter.error().code == HostErrorCode::InvalidSurface);
+  }
+
+  auto cursorShapeAfter = host->setCursorShape(surface.value(), CursorShape::Hand);
+  PH_CHECK(!cursorShapeAfter.has_value());
+  if (!cursorShapeAfter.has_value()) {
+    PH_CHECK(cursorShapeAfter.error().code == HostErrorCode::InvalidSurface);
+  }
+
+  std::array<uint8_t, 4> cursorPixels{255u, 255u, 255u, 255u};
+  CursorImage cursor{};
+  cursor.width = 1u;
+  cursor.height = 1u;
+  cursor.hotX = 0;
+  cursor.hotY = 0;
+  cursor.pixels = cursorPixels;
+  auto cursorImageAfter = host->setCursorImage(surface.value(), cursor);
+  PH_CHECK(!cursorImageAfter.has_value());
+  if (!cursorImageAfter.has_value()) {
+    PH_CHECK(cursorImageAfter.error().code == HostErrorCode::InvalidSurface);
+  }
+
+  auto cursorVisibleAfter = host->setCursorVisible(surface.value(), false);
+  PH_CHECK(!cursorVisibleAfter.has_value());
+  if (!cursorVisibleAfter.has_value()) {
+    PH_CHECK(cursorVisibleAfter.error().code == HostErrorCode::InvalidSurface);
   }
 }
 
