@@ -228,6 +228,7 @@ struct FileDialogConfig {
   bool canSelectHiddenFiles = false;
   std::optional<bool> allowFiles;
   std::optional<bool> allowDirectories;
+  bool defaultDirectoryOnly = false;
 };
 
 struct FileDialogResult {

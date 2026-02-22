@@ -1762,6 +1762,20 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
       (config.defaultName && !defaultName)) {
     return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
+  NSURL* defaultDirectoryUrl = nil;
+  NSString* defaultFileName = nil;
+  if (defaultPath) {
+    NSURL* url = [NSURL fileURLWithPath:defaultPath];
+    BOOL isDir = NO;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:defaultPath isDirectory:&isDir] && isDir) {
+      defaultDirectoryUrl = url;
+    } else {
+      defaultDirectoryUrl = [url URLByDeletingLastPathComponent];
+      if (!config.defaultDirectoryOnly) {
+        defaultFileName = url.lastPathComponent;
+      }
+    }
+  }
   if (config.mode == FileDialogMode::Open ||
       config.mode == FileDialogMode::OpenFile ||
       config.mode == FileDialogMode::OpenDirectory) {
@@ -1798,12 +1812,13 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (title) {
       panel.title = title;
     }
-    if (defaultPath) {
-      NSURL* url = [NSURL fileURLWithPath:defaultPath];
-      panel.directoryURL = url;
+    if (defaultDirectoryUrl) {
+      panel.directoryURL = defaultDirectoryUrl;
     }
     if (defaultName && allowFiles && !allowDirectories) {
       panel.nameFieldStringValue = defaultName;
+    } else if (defaultFileName && allowFiles && !allowDirectories) {
+      panel.nameFieldStringValue = defaultFileName;
     }
     if (allowFiles && !allowDirectories) {
       if (@available(macOS 12.0, *)) {
@@ -1876,15 +1891,11 @@ HostResult<size_t> HostMac::fileDialogPaths(const FileDialogConfig& config,
     if (title) {
       panel.title = title;
     }
-    if (defaultPath) {
-      NSURL* url = [NSURL fileURLWithPath:defaultPath];
-      BOOL isDir = NO;
-      if ([[NSFileManager defaultManager] fileExistsAtPath:defaultPath isDirectory:&isDir] && isDir) {
-        panel.directoryURL = url;
-      } else {
-        panel.directoryURL = [url URLByDeletingLastPathComponent];
-        panel.nameFieldStringValue = url.lastPathComponent;
-      }
+    if (defaultDirectoryUrl) {
+      panel.directoryURL = defaultDirectoryUrl;
+    }
+    if (defaultFileName) {
+      panel.nameFieldStringValue = defaultFileName;
     }
     if (defaultName) {
       panel.nameFieldStringValue = defaultName;

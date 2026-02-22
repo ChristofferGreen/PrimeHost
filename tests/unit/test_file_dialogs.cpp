@@ -92,6 +92,15 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
     PH_CHECK(invalidName.error().code == HostErrorCode::InvalidConfig);
   }
 
+  FileDialogConfig badDefaultPath{};
+  badDefaultPath.defaultPath = badView;
+  badDefaultPath.defaultDirectoryOnly = true;
+  auto invalidPath = host->fileDialogPaths(badDefaultPath, spans, okBuffer);
+  PH_CHECK(!invalidPath.has_value());
+  if (!invalidPath.has_value()) {
+    PH_CHECK(invalidPath.error().code == HostErrorCode::InvalidConfig);
+  }
+
   FileDialogConfig saveConfig{};
   saveConfig.mode = FileDialogMode::SaveFile;
   saveConfig.canCreateDirectories = false;
