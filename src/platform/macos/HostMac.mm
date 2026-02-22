@@ -69,6 +69,7 @@ namespace {
 
 constexpr uint32_t kMouseDeviceId = 1u;
 constexpr uint32_t kKeyboardDeviceId = 2u;
+constexpr uint32_t kPenDeviceId = 3u;
 
 struct SurfaceState {
   SurfaceId surfaceId{};
@@ -722,7 +723,7 @@ private:
   Callbacks callbacks_{};
   LogCallback logCallback_{};
   uint64_t nextSurfaceId_ = 1u;
-  uint32_t nextDeviceId_ = 3u;
+  uint32_t nextDeviceId_ = 4u;
   uint64_t nextTrayId_ = 1u;
   CVDisplayLinkRef cvDisplayLink_ = nullptr;
   std::optional<std::chrono::nanoseconds> displayInterval_{};
@@ -1141,6 +1142,18 @@ HostMac::HostMac() {
   devices_.emplace(kKeyboardDeviceId, keyboard);
   devices_[kKeyboardDeviceId].info.name = devices_[kKeyboardDeviceId].nameStorage;
   deviceOrder_.push_back(kKeyboardDeviceId);
+
+  DeviceRecord pen{};
+  pen.info.deviceId = kPenDeviceId;
+  pen.info.type = DeviceType::Pen;
+  pen.nameStorage = "Pen";
+  pen.caps.type = DeviceType::Pen;
+  pen.caps.hasPressure = true;
+  pen.caps.hasTilt = true;
+  pen.caps.hasTwist = true;
+  devices_.emplace(kPenDeviceId, pen);
+  devices_[kPenDeviceId].info.name = devices_[kPenDeviceId].nameStorage;
+  deviceOrder_.push_back(kPenDeviceId);
 
   auto now = std::chrono::steady_clock::now();
   for (uint32_t deviceId : deviceOrder_) {
@@ -3414,13 +3427,34 @@ void HostMac::handleResize(uint64_t surfaceId) {
 }
 
 void HostMac::handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDeviceType type, NSPoint point, NSEvent* event) {
+  PointerDeviceType deviceType = type;
+  uint32_t deviceId = kMouseDeviceId;
+  if (event) {
+    switch (event.pointingDeviceType) {
+      case NSPointingDeviceTypePen:
+      case NSPointingDeviceTypeEraser:
+        deviceType = PointerDeviceType::Pen;
+        deviceId = kPenDeviceId;
+        break;
+      default:
+        break;
+    }
+  }
+
   PointerEvent pointer{};
-  pointer.deviceId = kMouseDeviceId;
+  pointer.deviceId = deviceId;
   pointer.pointerId = 0u;
-  pointer.deviceType = type;
+  pointer.deviceType = deviceType;
   pointer.phase = phase;
   pointer.x = static_cast<int32_t>(std::lround(point.x));
   pointer.y = static_cast<int32_t>(std::lround(point.y));
+  if (deviceType == PointerDeviceType::Pen && event) {
+    pointer.pressure = static_cast<float>(event.pressure);
+    NSPoint tilt = event.tilt;
+    pointer.tiltX = static_cast<float>(tilt.x);
+    pointer.tiltY = static_cast<float>(tilt.y);
+    pointer.twist = static_cast<float>(event.rotation);
+  }
   if (phase == PrimeHost::PointerPhase::Move) {
     pointer.deltaX = static_cast<int32_t>(std::lround(event.deltaX));
     pointer.deltaY = static_cast<int32_t>(std::lround(event.deltaY));

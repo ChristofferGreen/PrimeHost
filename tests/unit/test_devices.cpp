@@ -73,4 +73,36 @@ PH_TEST("primehost.devices", "invalid device queries") {
   }
 }
 
+PH_TEST("primehost.devices", "pen device capabilities") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto countResult = host->devices({});
+  PH_REQUIRE(countResult.has_value());
+  std::vector<DeviceInfo> devices(countResult.value());
+  auto filled = host->devices(devices);
+  PH_REQUIRE(filled.has_value());
+
+  bool foundPen = false;
+  for (const auto& device : devices) {
+    if (device.type != DeviceType::Pen) {
+      continue;
+    }
+    foundPen = true;
+    auto caps = host->deviceCapabilities(device.deviceId);
+    PH_CHECK(caps.has_value());
+    if (caps) {
+      PH_CHECK(caps->hasPressure);
+      PH_CHECK(caps->hasTilt);
+      PH_CHECK(caps->hasTwist);
+    }
+  }
+
+  PH_CHECK(foundPen);
+}
+
 TEST_SUITE_END();
