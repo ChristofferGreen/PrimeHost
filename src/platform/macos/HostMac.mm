@@ -1510,6 +1510,10 @@ HostStatus HostMac::setSurfaceDisplay(SurfaceId surfaceId, uint32_t displayId) {
 HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   SurfaceId surfaceId{nextSurfaceId_++};
 
+  if (config.width == 0u || config.height == 0u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+
   if (config.headless) {
     auto state = std::make_unique<SurfaceState>();
     state->surfaceId = surfaceId;
