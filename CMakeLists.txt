@@ -148,6 +148,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_frame_config_util.cpp
     tests/unit/test_frame_diagnostics.cpp
     tests/unit/test_frame_limiter.cpp
+    tests/unit/test_framebuffer.cpp
     tests/unit/test_input_frame.mm
     tests/unit/test_resize_frame.cpp
     tests/unit/test_host_limiter_timer.cpp
@@ -189,43 +190,34 @@ if(PRIMEHOST_BUILD_EXAMPLES)
 endif()
 
 option(PRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE "Build PrimeHost PrimeStage UI example" OFF)
-set(PRIMEHOST_PRIMEFRAME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeFrame" CACHE PATH "PrimeFrame path")
-set(PRIMEHOST_PRIMESTAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeStage" CACHE PATH "PrimeStage path")
-set(PRIMEHOST_PRIMEMANIFEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeManifest" CACHE PATH "PrimeManifest path")
+set(PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeStage"
+    CACHE STRING "PrimeStage git repository")
+set(PRIMEHOST_PRIMESTAGE_GIT_TAG "master" CACHE STRING "PrimeStage git tag or commit")
 
 if(PRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE)
   if(NOT APPLE)
     message(FATAL_ERROR "primehost_primestage_demo is macOS-only for now.")
   endif()
 
-  foreach(dep_dir PRIMEHOST_PRIMEFRAME_DIR PRIMEHOST_PRIMESTAGE_DIR PRIMEHOST_PRIMEMANIFEST_DIR)
-    if(NOT EXISTS "${${dep_dir}}/CMakeLists.txt")
-      message(FATAL_ERROR "Missing dependency: ${dep_dir} -> ${${dep_dir}}")
-    endif()
-  endforeach()
-
-  set(PRIMEFRAME_BUILD_TESTS OFF CACHE BOOL "Build PrimeFrame tests" FORCE)
-  set(PRIMEFRAME_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeFrame examples" FORCE)
-  set(PRIMEMANIFEST_BUILD_TESTS OFF CACHE BOOL "Build PrimeManifest tests" FORCE)
-  set(PRIMEMANIFEST_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeManifest examples" FORCE)
-  set(PRIMESTAGE_FETCH_PRIMEFRAME OFF CACHE BOOL "Fetch PrimeFrame dependency" FORCE)
+  include(FetchContent)
+  set(PRIMESTAGE_FETCH_PRIMEFRAME ON CACHE BOOL "Fetch PrimeFrame dependency" FORCE)
+  set(PRIMESTAGE_ENABLE_PRIMEMANIFEST ON CACHE BOOL "Enable PrimeManifest integration" FORCE)
   set(PRIMESTAGE_BUILD_TESTS OFF CACHE BOOL "Build PrimeStage tests" FORCE)
   set(PRIMESTAGE_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeStage examples" FORCE)
+  set(PRIMEFRAME_GIT_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeFrame"
+      CACHE STRING "PrimeFrame git repository" FORCE)
+  set(PRIMESTAGE_PRIMEMANIFEST_GIT_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeManifest"
+      CACHE STRING "PrimeManifest git repository" FORCE)
 
-  add_subdirectory("${PRIMEHOST_PRIMEFRAME_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_deps/PrimeFrame")
-  add_subdirectory("${PRIMEHOST_PRIMEMANIFEST_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_deps/PrimeManifest")
-  add_subdirectory("${PRIMEHOST_PRIMESTAGE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_deps/PrimeStage")
+  FetchContent_Declare(
+    PrimeStage
+    GIT_REPOSITORY ${PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY}
+    GIT_TAG ${PRIMEHOST_PRIMESTAGE_GIT_TAG}
+  )
+  FetchContent_MakeAvailable(PrimeStage)
 
-  if(TARGET PrimeStage AND TARGET PrimeManifest)
-    target_link_libraries(PrimeStage PUBLIC PrimeManifest)
-    target_compile_definitions(PrimeStage PUBLIC PRIMESTAGE_HAS_PRIMEMANIFEST=1)
-  endif()
-
-  add_executable(primehost_primestage_demo examples/primehost_primestage_demo.mm)
-  target_link_libraries(primehost_primestage_demo PRIVATE PrimeHost PrimeStage PrimeFrame PrimeManifest)
+  add_executable(primehost_primestage_demo examples/primehost_primestage_demo.cpp)
+  target_link_libraries(primehost_primestage_demo PRIVATE PrimeHost PrimeStage)
   target_include_directories(primehost_primestage_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   ph_require_cxx23(primehost_primestage_demo)
-  if(APPLE AND CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
-    set_source_files_properties(examples/primehost_primestage_demo.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-  endif()
 endif()

@@ -211,6 +211,15 @@ struct ImageData {
   std::span<const uint8_t> pixels;
 };
 
+struct FrameBuffer {
+  ImageSize size;
+  uint32_t stride = 0u;
+  ColorFormat colorFormat = ColorFormat::B8G8R8A8_UNORM;
+  float scale = 1.0f;
+  uint32_t bufferIndex = 0u;
+  std::span<uint8_t> pixels;
+};
+
 struct IconImage {
   ImageSize size;
   std::span<const uint8_t> pixels;
@@ -482,6 +491,9 @@ public:
 
   virtual HostResult<EventBatch> pollEvents(const EventBuffer& buffer) = 0;
   virtual HostStatus waitEvents() = 0;
+
+  virtual HostResult<FrameBuffer> acquireFrameBuffer(SurfaceId surfaceId) = 0;
+  virtual HostStatus presentFrameBuffer(SurfaceId surfaceId, const FrameBuffer& buffer) = 0;
 
   virtual HostStatus requestFrame(SurfaceId surfaceId, bool bypassCap) = 0;
   virtual HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) = 0;

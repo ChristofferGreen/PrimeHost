@@ -321,6 +321,7 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::createSurface(const SurfaceConfig&) -> HostResult<SurfaceId>`
 - `Host::destroySurface(SurfaceId) -> HostStatus`
 - `Host::pollEvents(const EventBuffer&) -> HostResult<EventBatch>` and `waitEvents()`
+- `Host::acquireFrameBuffer(SurfaceId) -> HostResult<FrameBuffer>` and `presentFrameBuffer(SurfaceId, const FrameBuffer&)`
 - `Host::requestFrame`, `setFrameConfig`, `frameConfig`, `displayInterval`, `setSurfaceTitle`, `surfaceSize`, `setSurfaceSize`, `surfacePosition`, `setSurfacePosition`, `setCursorVisible`, `setSurfaceMinimized`, `setSurfaceMaximized`, `setSurfaceFullscreen`, `clipboardTextSize`, `clipboardText`, `setClipboardText`, `surfaceScale`, `setSurfaceMinSize`, `setSurfaceMaxSize`
 - `Host::appPathSize`, `appPath`
 - `Host::fileDialog`, `fileDialogPaths`
@@ -332,6 +333,24 @@ for (const PrimeHost::Event& evt : batch.events) {
 - `Host::beginBackgroundTask`, `endBackgroundTask`
 - `Host::createTrayItem`, `updateTrayItemTitle`, `removeTrayItem`
 - `Host::setCallbacks` (native callbacks use `EventBatch`; frame callbacks include `FrameDiagnostics`).
+
+### Framebuffer Presentation
+`FrameBuffer` exposes a CPU-writable BGRA8 pixel buffer owned by the host. Acquire a buffer on frame callbacks, render into it, and present it.
+
+```cpp
+PrimeHost::Callbacks callbacks{};
+callbacks.onFrame = [&](PrimeHost::SurfaceId surfaceId,
+                        const PrimeHost::FrameTiming&,
+                        const PrimeHost::FrameDiagnostics&) {
+  auto buffer = host->acquireFrameBuffer(surfaceId);
+  if (!buffer) {
+    return;
+  }
+  // render to buffer->pixels using buffer->size / buffer->stride
+  host->presentFrameBuffer(surfaceId, buffer.value());
+};
+host->setCallbacks(callbacks);
+```
 
 ## Validation Helpers
 - `validateFrameConfig(const FrameConfig&, const SurfaceCapabilities&)` (see `PrimeHost/FrameConfigValidation.h`).

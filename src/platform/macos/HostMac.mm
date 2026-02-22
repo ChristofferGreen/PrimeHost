@@ -93,6 +93,19 @@ struct SurfaceState {
   uint64_t frameIndex = 0u;
   std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
   std::optional<std::chrono::nanoseconds> displayInterval{};
+#if defined(__OBJC__)
+  struct FrameBufferSlot {
+    std::vector<uint8_t> pixels;
+    uint32_t width = 0u;
+    uint32_t height = 0u;
+    uint32_t stride = 0u;
+    bool acquired = false;
+    bool inFlight = false;
+    id<MTLTexture> texture = nil;
+  };
+  std::vector<FrameBufferSlot> frameBuffers;
+  size_t frameBufferCursor = 0u;
+#endif
 #if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
   CADisplayLink* viewDisplayLink = nil;
 #endif
@@ -631,6 +644,9 @@ public:
 
   HostResult<EventBatch> pollEvents(const EventBuffer& buffer) override;
   HostStatus waitEvents() override;
+
+  HostResult<FrameBuffer> acquireFrameBuffer(SurfaceId surfaceId) override;
+  HostStatus presentFrameBuffer(SurfaceId surfaceId, const FrameBuffer& buffer) override;
 
   HostStatus requestFrame(SurfaceId surfaceId, bool bypassCap) override;
   HostStatus setFrameConfig(SurfaceId surfaceId, const FrameConfig& config) override;
@@ -1908,6 +1924,206 @@ HostResult<EventBatch> HostMac::pollEvents(const EventBuffer& buffer) {
 
 HostStatus HostMac::waitEvents() {
   pumpEvents(true);
+  return {};
+}
+
+HostResult<FrameBuffer> HostMac::acquireFrameBuffer(SurfaceId surfaceId) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->frameConfig.colorFormat != ColorFormat::B8G8R8A8_UNORM) {
+    return std::unexpected(HostError{HostErrorCode::Unsupported});
+  }
+
+  uint32_t widthPx = 0u;
+  uint32_t heightPx = 0u;
+  float scale = 1.0f;
+  if (surface->headless) {
+    widthPx = surface->headlessSize.width;
+    heightPx = surface->headlessSize.height;
+  } else if (surface->window && surface->window.contentView) {
+    NSView* view = surface->window.contentView;
+    NSRect bounds = view.bounds;
+    scale = surface->window.backingScaleFactor;
+    widthPx = static_cast<uint32_t>(std::lround(bounds.size.width * scale));
+    heightPx = static_cast<uint32_t>(std::lround(bounds.size.height * scale));
+  }
+
+  if (widthPx == 0u || heightPx == 0u) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+
+  uint32_t desiredBuffers = 2u;
+  auto caps = surfaceCapabilities(surfaceId);
+  if (caps) {
+    desiredBuffers = effectiveBufferCount(surface->frameConfig, caps.value());
+  }
+  if (desiredBuffers == 0u) {
+    desiredBuffers = 2u;
+  }
+
+  if (surface->frameBuffers.empty()) {
+    surface->frameBuffers.resize(desiredBuffers);
+    surface->frameBufferCursor = 0u;
+  } else if (desiredBuffers != surface->frameBuffers.size()) {
+    bool canResize = true;
+    for (const auto& slot : surface->frameBuffers) {
+      if (slot.inFlight || slot.acquired) {
+        canResize = false;
+        break;
+      }
+    }
+    if (canResize) {
+      surface->frameBuffers.clear();
+      surface->frameBuffers.resize(desiredBuffers);
+      surface->frameBufferCursor = 0u;
+    }
+  }
+
+  if (surface->frameBuffers.empty()) {
+    return std::unexpected(HostError{HostErrorCode::OutOfMemory});
+  }
+
+  size_t slotIndex = surface->frameBuffers.size();
+  for (size_t i = 0; i < surface->frameBuffers.size(); ++i) {
+    size_t candidate = (surface->frameBufferCursor + i) % surface->frameBuffers.size();
+    auto& slot = surface->frameBuffers[candidate];
+    if (!slot.inFlight && !slot.acquired) {
+      slotIndex = candidate;
+      break;
+    }
+  }
+  if (slotIndex >= surface->frameBuffers.size()) {
+    return std::unexpected(HostError{HostErrorCode::DeviceUnavailable});
+  }
+
+  auto& slot = surface->frameBuffers[slotIndex];
+  slot.acquired = true;
+  surface->frameBufferCursor = (slotIndex + 1u) % surface->frameBuffers.size();
+
+  uint32_t stride = widthPx * 4u;
+  auto area = checkedSizeMul(widthPx, heightPx);
+  auto total = area ? checkedSizeMul(*area, static_cast<size_t>(4u)) : std::nullopt;
+  if (!total) {
+    slot.acquired = false;
+    return std::unexpected(HostError{HostErrorCode::OutOfMemory});
+  }
+
+  bool sizeChanged = slot.width != widthPx || slot.height != heightPx || slot.stride != stride;
+  if (sizeChanged) {
+    slot.pixels.clear();
+    slot.pixels.resize(*total, 0u);
+    slot.width = widthPx;
+    slot.height = heightPx;
+    slot.stride = stride;
+  } else if (slot.pixels.size() != *total) {
+    slot.pixels.resize(*total, 0u);
+  }
+
+  if (!surface->headless) {
+    if (!surface->layer || !surface->commandQueue) {
+      slot.acquired = false;
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    if (sizeChanged || !slot.texture) {
+      id<MTLDevice> device = surface->layer.device;
+      if (!device) {
+        slot.acquired = false;
+        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      }
+      MTLTextureDescriptor* desc =
+          [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                             width:widthPx
+                                                            height:heightPx
+                                                         mipmapped:NO];
+      desc.usage = MTLTextureUsageShaderRead;
+      desc.storageMode = MTLStorageModeShared;
+      desc.cpuCacheMode = MTLCPUCacheModeWriteCombined;
+      slot.texture = [device newTextureWithDescriptor:desc];
+      if (!slot.texture) {
+        slot.acquired = false;
+        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      }
+    }
+  }
+
+  FrameBuffer buffer{};
+  buffer.size = ImageSize{widthPx, heightPx};
+  buffer.stride = stride;
+  buffer.colorFormat = surface->frameConfig.colorFormat;
+  buffer.scale = scale;
+  buffer.bufferIndex = static_cast<uint32_t>(slotIndex);
+  buffer.pixels = std::span<uint8_t>(slot.pixels);
+  return buffer;
+}
+
+HostStatus HostMac::presentFrameBuffer(SurfaceId surfaceId, const FrameBuffer& buffer) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (buffer.colorFormat != ColorFormat::B8G8R8A8_UNORM) {
+    return std::unexpected(HostError{HostErrorCode::Unsupported});
+  }
+  if (buffer.bufferIndex >= surface->frameBuffers.size()) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+
+  auto& slot = surface->frameBuffers[buffer.bufferIndex];
+  if (!slot.acquired) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+
+  slot.acquired = false;
+
+  if (surface->headless) {
+    slot.inFlight = false;
+    return {};
+  }
+  if (!surface->layer || !surface->commandQueue) {
+    return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+  }
+  if (!slot.texture || slot.width != buffer.size.width || slot.height != buffer.size.height) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
+
+  @autoreleasepool {
+    MTLRegion region = MTLRegionMake2D(0, 0, slot.width, slot.height);
+    [slot.texture replaceRegion:region
+                    mipmapLevel:0
+                      withBytes:slot.pixels.data()
+                    bytesPerRow:slot.stride];
+
+    id<CAMetalDrawable> drawable = [surface->layer nextDrawable];
+    if (!drawable) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+
+    id<MTLCommandBuffer> commandBuffer = [surface->commandQueue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
+    MTLOrigin origin = {0, 0, 0};
+    MTLSize size = {slot.width, slot.height, 1};
+    [blit copyFromTexture:slot.texture
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:origin
+               sourceSize:size
+                toTexture:drawable.texture
+         destinationSlice:0
+         destinationLevel:0
+        destinationOrigin:origin];
+    [blit endEncoding];
+
+    [commandBuffer presentDrawable:drawable];
+    slot.inFlight = true;
+    auto* slotPtr = &slot;
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> _Nonnull) {
+      slotPtr->inFlight = false;
+    }];
+    [commandBuffer commit];
+  }
+
   return {};
 }
 
