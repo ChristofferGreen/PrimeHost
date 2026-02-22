@@ -15,12 +15,19 @@ PH_TEST("primehost.extensions", "permission and locale queries") {
   auto host = std::move(hostResult.value());
 
   auto permission = host->checkPermission(PermissionType::Camera);
-  if (!permission) {
+  if (permission) {
+    bool allowed = permission.value() == PermissionStatus::Unknown;
+    allowed = allowed || permission.value() == PermissionStatus::Granted;
+    allowed = allowed || permission.value() == PermissionStatus::Denied;
+    allowed = allowed || permission.value() == PermissionStatus::Restricted;
+    PH_CHECK(allowed);
+  } else {
     PH_CHECK(permission.error().code == HostErrorCode::Unsupported);
   }
 
-  auto request = host->requestPermission(PermissionType::Camera);
-  if (!request) {
+  auto request = host->requestPermission(PermissionType::Notifications);
+  PH_CHECK(!request.has_value());
+  if (!request.has_value()) {
     PH_CHECK(request.error().code == HostErrorCode::Unsupported);
   }
 

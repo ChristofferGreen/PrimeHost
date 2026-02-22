@@ -56,6 +56,7 @@ target_include_directories(PrimeHost
 ph_require_cxx23(PrimeHost)
 
 if(APPLE)
+  find_library(AVFOUNDATION_LIBRARY AVFoundation)
   find_library(CARBON_LIBRARY Carbon)
   find_library(COCOA_LIBRARY Cocoa)
   find_library(GAMECONTROLLER_LIBRARY GameController)
@@ -68,6 +69,7 @@ if(APPLE)
   find_library(IOKIT_LIBRARY IOKit)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
   target_link_libraries(PrimeHost PRIVATE
+    ${AVFOUNDATION_LIBRARY}
     ${CARBON_LIBRARY}
     ${COCOA_LIBRARY}
     ${GAMECONTROLLER_LIBRARY}

@@ -1,4 +1,6 @@
 #import <Cocoa/Cocoa.h>
+#import <AVFoundation/AVCaptureDevice.h>
+#import <AVFoundation/AVMediaFormat.h>
 #import <Carbon/Carbon.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreVideo/CoreVideo.h>
@@ -129,6 +131,20 @@ std::string cfstring_to_utf8(CFStringRef value) {
   }
   buffer.resize(std::strlen(buffer.c_str()));
   return buffer;
+}
+
+PermissionStatus map_av_status(AVAuthorizationStatus status) {
+  switch (status) {
+    case AVAuthorizationStatusAuthorized:
+      return PermissionStatus::Granted;
+    case AVAuthorizationStatusDenied:
+      return PermissionStatus::Denied;
+    case AVAuthorizationStatusRestricted:
+      return PermissionStatus::Restricted;
+    case AVAuthorizationStatusNotDetermined:
+    default:
+      return PermissionStatus::Unknown;
+  }
 }
 
 uint64_t hid_device_id(IOHIDDeviceRef device) {
@@ -1589,13 +1605,53 @@ HostStatus HostMac::setGamepadRumble(const GamepadRumble& rumble) {
 }
 
 HostResult<PermissionStatus> HostMac::checkPermission(PermissionType type) const {
-  (void)type;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  switch (type) {
+    case PermissionType::Camera: {
+      AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+      return map_av_status(status);
+    }
+    case PermissionType::Microphone: {
+      AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+      return map_av_status(status);
+    }
+    case PermissionType::Location:
+    case PermissionType::Photos:
+    case PermissionType::Notifications:
+    default:
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
+  }
 }
 
 HostResult<PermissionStatus> HostMac::requestPermission(PermissionType type) {
-  (void)type;
-  return std::unexpected(HostError{HostErrorCode::Unsupported});
+  NSString* mediaType = nil;
+  switch (type) {
+    case PermissionType::Camera:
+      mediaType = AVMediaTypeVideo;
+      break;
+    case PermissionType::Microphone:
+      mediaType = AVMediaTypeAudio;
+      break;
+    case PermissionType::Location:
+    case PermissionType::Photos:
+    case PermissionType::Notifications:
+    default:
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
+  }
+
+  AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:mediaType];
+  if (status != AVAuthorizationStatusNotDetermined) {
+    return map_av_status(status);
+  }
+
+  dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+  __block bool granted = false;
+  [AVCaptureDevice requestAccessForMediaType:mediaType
+                           completionHandler:^(BOOL ok) {
+                             granted = ok;
+                             dispatch_semaphore_signal(semaphore);
+                           }];
+  dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+  return granted ? PermissionStatus::Granted : PermissionStatus::Denied;
 }
 
 HostResult<uint64_t> HostMac::beginIdleSleepInhibit(Utf8TextView reason) {
