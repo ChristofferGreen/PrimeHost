@@ -3205,6 +3205,9 @@ HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
   if (!surface) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
+  if (width < 0 || height < 0) {
+    return std::unexpected(HostError{HostErrorCode::InvalidConfig});
+  }
   if (surface->headless) {
     return {};
   }
