@@ -663,6 +663,7 @@ public:
   void handleResize(uint64_t surfaceId);
   void handlePointer(uint64_t surfaceId, PointerPhase phase, PointerDeviceType type, NSPoint point, NSEvent* event);
   void handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, PointerPhase phase);
+  void handleTabletProximity(uint64_t surfaceId, NSEvent* event);
   void handleScroll(uint64_t surfaceId, NSEvent* event);
   void handleKey(NSEvent* event, bool pressed, bool repeat);
   void handleModifiers(NSEvent* event);
@@ -941,6 +942,12 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
   if (self.host) {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
     self.host->handlePointer(self.surfaceId, PrimeHost::PointerPhase::Move, PrimeHost::PointerDeviceType::Pen, p, event);
+  }
+}
+
+- (void)tabletProximity:(NSEvent*)event {
+  if (self.host) {
+    self.host->handleTabletProximity(self.surfaceId, event);
   }
 }
 
@@ -3624,6 +3631,35 @@ void HostMac::handleTouches(uint64_t surfaceId, NSView* view, NSEvent* event, Po
       touchIds_.erase(key);
     }
   }
+}
+
+void HostMac::handleTabletProximity(uint64_t surfaceId, NSEvent* event) {
+  if (!event) {
+    return;
+  }
+  auto* surface = findSurface(surfaceId);
+  if (!surface || !surface->view) {
+    return;
+  }
+  NSPoint location = [surface->view convertPoint:event.locationInWindow fromView:nil];
+
+  PointerEvent pointer{};
+  pointer.deviceId = kPenDeviceId;
+  pointer.pointerId = 0u;
+  pointer.deviceType = PointerDeviceType::Pen;
+  pointer.phase = event.isEnteringProximity ? PointerPhase::Move : PointerPhase::Cancel;
+  pointer.x = static_cast<int32_t>(std::lround(location.x));
+  pointer.y = static_cast<int32_t>(std::lround(location.y));
+  pointer.pressure = 0.0f;
+  pointer.buttonMask = map_mouse_buttons(event.buttonMask);
+  pointer.isPrimary = true;
+
+  Event evt{};
+  evt.scope = Event::Scope::Surface;
+  evt.surfaceId = SurfaceId{surfaceId};
+  evt.time = std::chrono::steady_clock::now();
+  evt.payload = pointer;
+  enqueueEvent(std::move(evt));
 }
 
 void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {

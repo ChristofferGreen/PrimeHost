@@ -56,4 +56,15 @@ PH_TEST("primehost.framediagnostics", "platform pacing does not mark throttled")
   PH_CHECK(!diag.wasThrottled);
 }
 
+PH_TEST("primehost.framediagnostics", "dropped frames saturate") {
+  auto target = std::chrono::milliseconds(16);
+  auto actual = target * static_cast<int64_t>(UINT32_MAX) * 2;
+  auto diag = buildFrameDiagnostics(target,
+                                    actual,
+                                    FramePolicy::Continuous,
+                                    FramePacingSource::Platform);
+  PH_CHECK(diag.missedDeadline);
+  PH_CHECK(diag.droppedFrames == UINT32_MAX);
+}
+
 TEST_SUITE_END();
