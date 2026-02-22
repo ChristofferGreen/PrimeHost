@@ -99,6 +99,9 @@ PH_TEST("primehost.headless", "create and size") {
   auto relativeOff = host->setRelativePointerCapture(surface.value(), false);
   PH_CHECK(relativeOff.has_value());
 
+  auto imeRect = host->setImeCompositionRect(surface.value(), 5, 6, 7, 8);
+  PH_CHECK(imeRect.has_value());
+
   auto displayCount = host->displays({});
   PH_CHECK(displayCount.has_value());
   if (displayCount && displayCount.value() > 0u) {

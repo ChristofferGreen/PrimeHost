@@ -3130,7 +3130,13 @@ HostStatus HostMac::setImeCompositionRect(SurfaceId surfaceId,
                                           int32_t width,
                                           int32_t height) {
   auto* surface = findSurface(surfaceId.value);
-  if (!surface || !surface->view) {
+  if (!surface) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  if (surface->headless) {
+    return {};
+  }
+  if (!surface->view) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
   NSRect rect = NSMakeRect(static_cast<CGFloat>(x),
