@@ -585,6 +585,10 @@ public:
   HostResult<size_t> clipboardTextSize() const override;
   HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const override;
   HostStatus setClipboardText(Utf8TextView text) override;
+  HostResult<size_t> clipboardPathsTextSize() const override;
+  HostResult<size_t> clipboardPathsCount() const override;
+  HostResult<ClipboardPathsResult> clipboardPaths(std::span<TextSpan> outPaths,
+                                                  std::span<char> buffer) const override;
   HostStatus writeSurfaceScreenshot(SurfaceId surfaceId,
                                     Utf8TextView path,
                                     const ScreenshotConfig& config) override;
@@ -1859,6 +1863,94 @@ HostStatus HostMac::setClipboardText(Utf8TextView text) {
   return {};
 }
 
+HostResult<size_t> HostMac::clipboardPathsTextSize() const {
+  if (@available(macOS 10.13, *)) {
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    NSArray<NSURL*>* urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                      options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    if (!urls || urls.count == 0) {
+      return static_cast<size_t>(0u);
+    }
+    size_t total = 0u;
+    for (NSURL* url in urls) {
+      if (!url) {
+        continue;
+      }
+      NSString* path = url.path;
+      if (!path) {
+        continue;
+      }
+      NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
+      if (!data) {
+        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      }
+      total += static_cast<size_t>(data.length);
+    }
+    return total;
+  }
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<size_t> HostMac::clipboardPathsCount() const {
+  if (@available(macOS 10.13, *)) {
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    NSArray<NSURL*>* urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                      options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    if (!urls || urls.count == 0) {
+      return static_cast<size_t>(0u);
+    }
+    return static_cast<size_t>(urls.count);
+  }
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
+HostResult<ClipboardPathsResult> HostMac::clipboardPaths(std::span<TextSpan> outPaths,
+                                                         std::span<char> buffer) const {
+  if (outPaths.empty() || buffer.empty()) {
+    return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+  }
+  if (@available(macOS 10.13, *)) {
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    NSArray<NSURL*>* urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                      options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    ClipboardPathsResult result{};
+    result.available = false;
+    result.paths = std::span<const TextSpan>(outPaths.data(), 0u);
+    if (!urls || urls.count == 0) {
+      buffer[0] = '\0';
+      return result;
+    }
+    if (urls.count > outPaths.size()) {
+      return std::unexpected(HostError{HostErrorCode::BufferTooSmall});
+    }
+    TextBufferWriter writer{buffer, 0u};
+    size_t count = 0u;
+    for (NSURL* url in urls) {
+      if (!url) {
+        continue;
+      }
+      NSString* path = url.path;
+      if (!path) {
+        continue;
+      }
+      NSData* data = [path dataUsingEncoding:NSUTF8StringEncoding];
+      if (!data) {
+        return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      }
+      std::string_view text(reinterpret_cast<const char*>(data.bytes), data.length);
+      auto span = writer.append(text);
+      if (!span) {
+        return std::unexpected(span.error());
+      }
+      outPaths[count++] = span.value();
+    }
+    result.available = true;
+    result.paths = std::span<const TextSpan>(outPaths.data(), count);
+    return result;
+  }
+  return std::unexpected(HostError{HostErrorCode::Unsupported});
+}
+
 HostStatus HostMac::writeSurfaceScreenshot(SurfaceId surfaceId,
                                            Utf8TextView path,
                                            const ScreenshotConfig& config) {
@@ -2348,6 +2440,8 @@ HostResult<PermissionStatus> HostMac::checkPermission(PermissionType type) const
         return map_photo_status(status);
       }
       return std::unexpected(HostError{HostErrorCode::Unsupported});
+    case PermissionType::ClipboardRead:
+      return PermissionStatus::Granted;
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
   }
@@ -2437,6 +2531,8 @@ HostResult<PermissionStatus> HostMac::requestPermission(PermissionType type) {
         return map_photo_status(status);
       }
       return std::unexpected(HostError{HostErrorCode::Unsupported});
+    case PermissionType::ClipboardRead:
+      return PermissionStatus::Granted;
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
   }

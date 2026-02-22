@@ -77,7 +77,7 @@ struct HostCapabilities {
   bool supportsHeadless = false;
 };
 
-enum class PermissionType { Camera, Microphone, Location, Photos, Notifications };
+enum class PermissionType { Camera, Microphone, Location, Photos, Notifications, ClipboardRead };
 
 enum class PermissionStatus { Unknown, Granted, Denied, Restricted };
 
@@ -249,6 +249,16 @@ struct FileDialogResult {
   Utf8TextView path;
 };
 
+struct TextSpan {
+  uint32_t offset = 0u;
+  uint32_t length = 0u;
+};
+
+struct ClipboardPathsResult {
+  bool available = false;
+  std::span<const TextSpan> paths;
+};
+
 struct ScreenshotConfig {
   ScreenshotScope scope = ScreenshotScope::Surface;
   bool includeHidden = false;
@@ -281,11 +291,6 @@ struct KeyEvent {
   KeyModifierMask modifiers = 0u;
   bool pressed = false;
   bool repeat = false;
-};
-
-struct TextSpan {
-  uint32_t offset = 0u;
-  uint32_t length = 0u;
 };
 
 struct TextEvent {
@@ -442,6 +447,10 @@ public:
   virtual HostResult<size_t> clipboardTextSize() const = 0;
   virtual HostResult<Utf8TextView> clipboardText(std::span<char> buffer) const = 0;
   virtual HostStatus setClipboardText(Utf8TextView text) = 0;
+  virtual HostResult<size_t> clipboardPathsTextSize() const = 0;
+  virtual HostResult<size_t> clipboardPathsCount() const = 0;
+  virtual HostResult<ClipboardPathsResult> clipboardPaths(std::span<TextSpan> outPaths,
+                                                         std::span<char> buffer) const = 0;
   virtual HostStatus writeSurfaceScreenshot(SurfaceId surfaceId,
                                             Utf8TextView path,
                                             const ScreenshotConfig& config = {}) = 0;

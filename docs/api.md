@@ -67,6 +67,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 
 ## Permissions (Draft)
 - Camera/microphone/location/notifications/photos permission queries and requests.
+- Clipboard read permission when required by the platform.
 - Default: unknown until queried; platforms may require prompts.
 - Implemented: `checkPermission` for camera/microphone/notifications/location/photos on macOS.
 - Implemented: `requestPermission` for camera/microphone/notifications/photos on macOS.
@@ -111,6 +112,20 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 - Text, file paths, and image data where supported.
 - Default: text-only on platforms without richer formats.
 - Implemented: `clipboardTextSize`, `clipboardText`, `setClipboardText` (text-only).
+- Implemented: `clipboardPathsTextSize`, `clipboardPathsCount`, `clipboardPaths` (macOS file URLs).
+
+Example (file paths):
+```cpp
+std::array<PrimeHost::TextSpan, 8> paths;
+std::array<char, 2048> bytes;
+auto result = host->clipboardPaths(paths, bytes);
+if (result && result->available) {
+  for (const auto& span : result->paths) {
+    std::string_view path(bytes.data() + span.offset, span.length);
+    // use path
+  }
+}
+```
 
 ## Screenshots (Debug)
 - Write a PNG screenshot of a surface/window to disk.
