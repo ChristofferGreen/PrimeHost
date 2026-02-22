@@ -125,6 +125,7 @@ enum class AppPathType {
 
 enum class FileDialogMode {
   OpenFile,
+  OpenDirectory,
   SaveFile,
 };
 

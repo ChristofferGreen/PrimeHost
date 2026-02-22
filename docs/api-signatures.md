@@ -70,7 +70,7 @@ enum class PermissionStatus { Unknown, Granted, Denied, Restricted };
 
 enum class AppPathType { UserData, Cache, Config, Logs, Temp };
 
-enum class FileDialogMode { OpenFile, SaveFile };
+enum class FileDialogMode { OpenFile, OpenDirectory, SaveFile };
 
 struct SurfaceCapabilities {
   bool supportsVsyncToggle = false;
