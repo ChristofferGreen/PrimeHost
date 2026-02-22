@@ -119,6 +119,8 @@ enum class AppPathType {
   UserData,
   Cache,
   Config,
+  Logs,
+  Temp,
 };
 
 enum class FileDialogMode {

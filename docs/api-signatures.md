@@ -68,7 +68,7 @@ enum class PermissionType { Camera, Microphone, Location, Photos, Notifications 
 
 enum class PermissionStatus { Unknown, Granted, Denied, Restricted };
 
-enum class AppPathType { UserData, Cache, Config };
+enum class AppPathType { UserData, Cache, Config, Logs, Temp };
 
 enum class FileDialogMode { OpenFile, SaveFile };
 

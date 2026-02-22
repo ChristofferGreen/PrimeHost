@@ -138,8 +138,16 @@ std::string cfstring_to_utf8(CFStringRef value) {
 }
 
 HostResult<NSString*> app_path_for_type(AppPathType type) {
+  if (type == AppPathType::Temp) {
+    NSString* temp = NSTemporaryDirectory();
+    if (!temp) {
+      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+    }
+    return temp;
+  }
   NSSearchPathDirectory directory = NSApplicationSupportDirectory;
   bool appendPreferences = false;
+  bool appendLogs = false;
   switch (type) {
     case AppPathType::UserData:
       directory = NSApplicationSupportDirectory;
@@ -151,6 +159,10 @@ HostResult<NSString*> app_path_for_type(AppPathType type) {
       directory = NSLibraryDirectory;
       appendPreferences = true;
       break;
+    case AppPathType::Logs:
+      directory = NSLibraryDirectory;
+      appendLogs = true;
+      break;
     default:
       return std::unexpected(HostError{HostErrorCode::InvalidConfig});
   }
@@ -161,6 +173,9 @@ HostResult<NSString*> app_path_for_type(AppPathType type) {
   NSString* path = paths[0];
   if (appendPreferences) {
     path = [path stringByAppendingPathComponent:@"Preferences"];
+  }
+  if (appendLogs) {
+    path = [path stringByAppendingPathComponent:@"Logs"];
   }
   return path;
 }

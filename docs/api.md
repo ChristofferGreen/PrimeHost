@@ -112,6 +112,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## App Paths (Draft)
 - Standard directories for user data, cache, and config.
 - Defaults follow platform conventions (e.g., `~/Library`, `AppData`, `~/.config`).
+- App path types include `UserData`, `Cache`, `Config`, `Logs`, `Temp`.
 - Implemented: `appPathSize`, `appPath` (macOS).
 
 ## Events

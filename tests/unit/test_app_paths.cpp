@@ -18,6 +18,8 @@ PH_TEST("primehost.paths", "app path queries") {
       AppPathType::UserData,
       AppPathType::Cache,
       AppPathType::Config,
+      AppPathType::Logs,
+      AppPathType::Temp,
   };
 
   for (AppPathType type : types) {
