@@ -67,6 +67,14 @@ enum class DeviceType {
   Gamepad,
 };
 
+enum class ThermalState {
+  Unknown,
+  Nominal,
+  Fair,
+  Serious,
+  Critical,
+};
+
 using PresentModeMask = uint32_t;
 using ColorFormatMask = uint32_t;
 
@@ -438,6 +446,14 @@ struct ResizeEvent {
   float scale = 1.0f;
 };
 
+struct PowerEvent {
+  std::optional<bool> lowPowerModeEnabled;
+};
+
+struct ThermalEvent {
+  ThermalState state = ThermalState::Unknown;
+};
+
 enum class LifecyclePhase {
   Created,
   Suspended,
@@ -460,7 +476,7 @@ struct Event {
   Scope scope = Scope::Surface;
   std::optional<SurfaceId> surfaceId;
   std::chrono::steady_clock::time_point time;
-  std::variant<InputEvent, ResizeEvent, LifecycleEvent> payload;
+  std::variant<InputEvent, ResizeEvent, PowerEvent, ThermalEvent, LifecycleEvent> payload;
 };
 
 struct EventBuffer {

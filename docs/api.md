@@ -100,6 +100,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Power / Thermal (Draft)
 - Global events for low-power mode and thermal warnings.
 - Default: no events on platforms without support.
+- Implemented: `PowerEvent`, `ThermalEvent` (macOS).
 
 ## Pointer Lock / Capture (Draft)
 - Relative pointer mode and explicit capture/lock controls.
@@ -199,9 +200,10 @@ if (result && result->accepted) {
 - Implemented: `appPathSize`, `appPath` (macOS).
 
 ## Events
-- `Event`: tagged union of input, resize, and lifecycle events.
+- `Event`: tagged union of input, resize, power/thermal, and lifecycle events.
 - `DeviceEvent`: connect/disconnect notification for input devices.
 - Input events: `PointerEvent`, `KeyEvent`, `TextEvent`, `ScrollEvent`, `GamepadButtonEvent`, `GamepadAxisEvent`.
+- Power events: `PowerEvent` (low power mode), `ThermalEvent` (thermal state changes).
 - All input events carry `deviceId`.
 - Pointer events unify mouse/touch/pen; optional fields include delta, pressure, tilt, twist, and distance.
 - Gamepad buttons may include an optional analog value; axes always include a float value.

@@ -34,6 +34,8 @@ enum class CursorShape {
 
 enum class DeviceType { Mouse, Touch, Pen, Keyboard, Gamepad };
 
+enum class ThermalState { Unknown, Nominal, Fair, Serious, Critical };
+
 using PresentModeMask = uint32_t;
 using ColorFormatMask = uint32_t;
 
@@ -366,6 +368,14 @@ struct ResizeEvent {
   float scale = 1.0f;
 };
 
+struct PowerEvent {
+  std::optional<bool> lowPowerModeEnabled;
+};
+
+struct ThermalEvent {
+  ThermalState state = ThermalState::Unknown;
+};
+
 enum class LifecyclePhase { Created, Suspended, Resumed, Backgrounded, Foregrounded, Destroyed };
 
 struct LifecycleEvent { LifecyclePhase phase = LifecyclePhase::Created; };
@@ -375,7 +385,7 @@ struct Event {
   Scope scope = Scope::Surface;
   std::optional<SurfaceId> surfaceId;
   std::chrono::steady_clock::time_point time;
-  std::variant<InputEvent, ResizeEvent, LifecycleEvent> payload;
+  std::variant<InputEvent, ResizeEvent, PowerEvent, ThermalEvent, LifecycleEvent> payload;
 };
 
 struct EventBuffer {

@@ -128,6 +128,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_surface_display.cpp
     tests/unit/test_host_extensions.cpp
     tests/unit/test_fps.cpp
+    tests/unit/test_power_events.cpp
     tests/unit/test_frame_config_validation.cpp
     tests/unit/test_frame_config_defaults.cpp
     tests/unit/test_frame_config_query.cpp

@@ -90,6 +90,21 @@ std::optional<GamepadProfile> match_gamepad_profile(uint16_t vendorId, uint16_t 
   return findGamepadProfile(vendorId, productId, name);
 }
 
+ThermalState map_thermal_state(NSProcessInfoThermalState state) {
+  switch (state) {
+    case NSProcessInfoThermalStateNominal:
+      return ThermalState::Nominal;
+    case NSProcessInfoThermalStateFair:
+      return ThermalState::Fair;
+    case NSProcessInfoThermalStateSerious:
+      return ThermalState::Serious;
+    case NSProcessInfoThermalStateCritical:
+      return ThermalState::Critical;
+    default:
+      return ThermalState::Unknown;
+  }
+}
+
 using WindowImageFn = CGImageRef (*)(CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption);
 
 WindowImageFn window_image_fn() {
@@ -623,6 +638,8 @@ public:
   void handleHidDeviceAttached(IOHIDDeviceRef device);
   void handleHidDeviceRemoved(IOHIDDeviceRef device);
   void updateCursorRects(uint64_t surfaceId, NSView* view);
+  void handlePowerStateChange();
+  void handleThermalStateChange();
 
 private:
   struct QueuedEvent {
@@ -655,6 +672,8 @@ private:
   std::unordered_map<uint32_t, CHHapticEngine*> hapticsEngines_;
   id gamepadConnectObserver_ = nil;
   id gamepadDisconnectObserver_ = nil;
+  id powerStateObserver_ = nil;
+  id thermalStateObserver_ = nil;
   std::vector<QueuedEvent> eventQueue_;
   std::vector<Event> callbackEvents_;
   std::vector<char> callbackText_;
@@ -1095,11 +1114,35 @@ HostMac::HostMac() {
                           if (auto* controller = (GCController*)note.object) {
                             host->handleGamepadDisconnected(controller);
                           }
-                        }];
+        }];
 
     for (GCController* controller in [GCController controllers]) {
       handleGamepadConnected(controller);
     }
+  }
+
+  if (@available(macOS 10.10.3, *)) {
+    handleThermalStateChange();
+    thermalStateObserver_ =
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSProcessInfoThermalStateDidChangeNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(__unused NSNotification* note) {
+                      handleThermalStateChange();
+                    }];
+  }
+
+  if (@available(macOS 12.0, *)) {
+    handlePowerStateChange();
+    powerStateObserver_ =
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSProcessInfoPowerStateDidChangeNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(__unused NSNotification* note) {
+                      handlePowerStateChange();
+                    }];
   }
 
 #pragma clang diagnostic push
@@ -1146,6 +1189,14 @@ HostMac::~HostMac() {
   if (gamepadDisconnectObserver_) {
     [[NSNotificationCenter defaultCenter] removeObserver:gamepadDisconnectObserver_];
     gamepadDisconnectObserver_ = nil;
+  }
+  if (thermalStateObserver_) {
+    [[NSNotificationCenter defaultCenter] removeObserver:thermalStateObserver_];
+    thermalStateObserver_ = nil;
+  }
+  if (powerStateObserver_) {
+    [[NSNotificationCenter defaultCenter] removeObserver:powerStateObserver_];
+    powerStateObserver_ = nil;
   }
   if (hidManager_) {
     IOHIDManagerUnscheduleFromRunLoop(hidManager_, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
@@ -3057,6 +3108,30 @@ void HostMac::handleHidDeviceRemoved(IOHIDDeviceRef device) {
     CFRelease(it->second);
   }
   hidDevicesById_.erase(it);
+}
+
+void HostMac::handlePowerStateChange() {
+  if (@available(macOS 12.0, *)) {
+    Event event{};
+    event.scope = Event::Scope::Global;
+    event.time = std::chrono::steady_clock::now();
+    PowerEvent power{};
+    power.lowPowerModeEnabled = [NSProcessInfo processInfo].lowPowerModeEnabled;
+    event.payload = power;
+    enqueueEvent(std::move(event));
+  }
+}
+
+void HostMac::handleThermalStateChange() {
+  if (@available(macOS 10.10.3, *)) {
+    Event event{};
+    event.scope = Event::Scope::Global;
+    event.time = std::chrono::steady_clock::now();
+    ThermalEvent thermal{};
+    thermal.state = map_thermal_state([NSProcessInfo processInfo].thermalState);
+    event.payload = thermal;
+    enqueueEvent(std::move(event));
+  }
 }
 
 void HostMac::enqueueGamepadButton(uint32_t deviceId, uint32_t controlId, bool pressed, float value) {
