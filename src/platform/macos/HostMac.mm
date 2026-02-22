@@ -77,6 +77,7 @@ struct SurfaceState {
   PHWindowDelegate* delegate = nullptr;
   id commandQueue = nil;
   FrameConfig frameConfig{};
+  CursorShape cursorShape = CursorShape::Arrow;
   uint64_t frameIndex = 0u;
   std::optional<std::chrono::steady_clock::time_point> lastFrameTime{};
   std::optional<std::chrono::nanoseconds> displayInterval{};
@@ -561,6 +562,7 @@ public:
   HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const override;
   HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) override;
   HostResult<SafeAreaInsets> surfaceSafeAreaInsets(SurfaceId surfaceId) const override;
+  HostStatus setCursorShape(SurfaceId surfaceId, CursorShape shape) override;
   HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) override;
   HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) override;
   HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) override;
@@ -620,6 +622,7 @@ public:
   void releaseRelativePointer();
   void handleHidDeviceAttached(IOHIDDeviceRef device);
   void handleHidDeviceRemoved(IOHIDDeviceRef device);
+  void updateCursorRects(uint64_t surfaceId, NSView* view);
 
 private:
   struct QueuedEvent {
@@ -630,6 +633,7 @@ private:
   HostStatus presentEmptyFrame(SurfaceState& surface);
   HostResult<EventBatch> buildBatch(std::span<const QueuedEvent> events, const EventBuffer& buffer);
   void enqueueEvent(Event event, std::string text = {});
+  NSCursor* cursorForShape(CursorShape shape) const;
   void pumpEvents(bool wait);
   SurfaceState* findSurface(uint64_t surfaceId);
   const SurfaceState* findSurface(uint64_t surfaceId) const;
@@ -771,6 +775,15 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
                                              userInfo:nil];
   [self addTrackingArea:trackingArea_];
   [super updateTrackingAreas];
+}
+
+- (void)resetCursorRects {
+  [self discardCursorRects];
+  if (self.host) {
+    self.host->updateCursorRects(self.surfaceId, self);
+  } else {
+    [super resetCursorRects];
+  }
 }
 
 - (void)mouseDown:(NSEvent*)event {
@@ -1679,6 +1692,24 @@ HostResult<SafeAreaInsets> HostMac::surfaceSafeAreaInsets(SurfaceId surfaceId) c
     insets.bottom = static_cast<float>(nsInsets.bottom);
   }
   return insets;
+}
+
+HostStatus HostMac::setCursorShape(SurfaceId surfaceId, CursorShape shape) {
+  auto* surface = findSurface(surfaceId.value);
+  if (!surface || !surface->view) {
+    return std::unexpected(HostError{HostErrorCode::InvalidSurface});
+  }
+  surface->cursorShape = shape;
+  if (surface->window) {
+    [surface->window invalidateCursorRectsForView:surface->view];
+    if (surface->window.isKeyWindow) {
+      NSCursor* cursor = cursorForShape(shape);
+      if (cursor) {
+        [cursor set];
+      }
+    }
+  }
+  return {};
 }
 
 HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
@@ -3150,6 +3181,59 @@ void HostMac::enqueueEvent(Event event, std::string text) {
     return;
   }
   eventQueue_.push_back(std::move(queued));
+}
+
+NSCursor* HostMac::cursorForShape(CursorShape shape) const {
+  switch (shape) {
+    case CursorShape::Arrow:
+      return [NSCursor arrowCursor];
+    case CursorShape::IBeam:
+      return [NSCursor IBeamCursor];
+    case CursorShape::Crosshair:
+      return [NSCursor crosshairCursor];
+    case CursorShape::Hand:
+      return [NSCursor pointingHandCursor];
+    case CursorShape::NotAllowed:
+      return [NSCursor operationNotAllowedCursor];
+    case CursorShape::ResizeLeftRight:
+      if (@available(macOS 15.0, *)) {
+        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionLeft
+                                         inDirections:NSCursorFrameResizeDirectionsAll];
+      }
+      return [NSCursor arrowCursor];
+    case CursorShape::ResizeUpDown:
+      if (@available(macOS 15.0, *)) {
+        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTop
+                                         inDirections:NSCursorFrameResizeDirectionsAll];
+      }
+      return [NSCursor arrowCursor];
+    case CursorShape::ResizeDiagonal:
+      if (@available(macOS 15.0, *)) {
+        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopLeft
+                                         inDirections:NSCursorFrameResizeDirectionsAll];
+      }
+      return [NSCursor arrowCursor];
+    case CursorShape::ResizeDiagonalReverse:
+      if (@available(macOS 15.0, *)) {
+        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopRight
+                                         inDirections:NSCursorFrameResizeDirectionsAll];
+      }
+      return [NSCursor arrowCursor];
+    default:
+      return [NSCursor arrowCursor];
+  }
+}
+
+void HostMac::updateCursorRects(uint64_t surfaceId, NSView* view) {
+  auto* surface = findSurface(surfaceId);
+  if (!surface || !view) {
+    return;
+  }
+  NSCursor* cursor = cursorForShape(surface->cursorShape);
+  if (!cursor) {
+    cursor = [NSCursor arrowCursor];
+  }
+  [view addCursorRect:view.bounds cursor:cursor];
 }
 
 void HostMac::pumpEvents(bool wait) {

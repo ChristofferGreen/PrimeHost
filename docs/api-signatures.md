@@ -20,6 +20,17 @@ enum class PresentMode { LowLatency, Smooth, Uncapped };
 enum class FramePacingSource { Platform, HostLimiter };
 enum class FramePolicy { EventDriven, Continuous, Capped };
 enum class ColorFormat { B8G8R8A8_UNORM };
+enum class CursorShape {
+  Arrow,
+  IBeam,
+  Crosshair,
+  Hand,
+  ResizeLeftRight,
+  ResizeUpDown,
+  ResizeDiagonal,
+  ResizeDiagonalReverse,
+  NotAllowed,
+};
 
 enum class DeviceType { Mouse, Touch, Pen, Keyboard, Gamepad };
 
@@ -413,6 +424,7 @@ public:
   virtual HostResult<SurfacePoint> surfacePosition(SurfaceId surfaceId) const = 0;
   virtual HostStatus setSurfacePosition(SurfaceId surfaceId, int32_t x, int32_t y) = 0;
   virtual HostResult<SafeAreaInsets> surfaceSafeAreaInsets(SurfaceId surfaceId) const = 0;
+  virtual HostStatus setCursorShape(SurfaceId surfaceId, CursorShape shape) = 0;
   virtual HostStatus setCursorVisible(SurfaceId surfaceId, bool visible) = 0;
   virtual HostStatus setSurfaceMinimized(SurfaceId surfaceId, bool minimized) = 0;
   virtual HostStatus setSurfaceMaximized(SurfaceId surfaceId, bool maximized) = 0;

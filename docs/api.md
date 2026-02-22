@@ -21,6 +21,7 @@ platform-neutral and stable across backends.
 - `LocaleInfo`: locale language/region tags.
 - `PresentMode`, `FramePolicy`, `FramePacingSource`, `ColorFormat`: presentation enums.
 - `EventBuffer` / `EventBatch`: caller-provided event storage and text buffer views.
+- `CursorShape`: standard cursor shapes.
 - `HostStatus`, `HostResult<T>`, `HostError`: error reporting for host operations using `std::expected`.
 Full signatures are listed in `docs/api-signatures.md`.
 
@@ -52,7 +53,7 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Cursor (Draft)
 - Standard cursor shapes plus custom cursor image support.
 - Defaults: system arrow cursor; cursor visible unless explicitly hidden.
-- Implemented: `setCursorVisible` (visibility only).
+- Implemented: `setCursorVisible`, `setCursorShape` (macOS).
 
 ## Safe-Area Insets (Draft)
 - Per-surface safe-area insets for notches/rounded corners.
