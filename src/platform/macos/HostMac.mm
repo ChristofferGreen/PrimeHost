@@ -4438,9 +4438,15 @@ HostStatus HostMac::presentEmptyFrame(SurfaceState& surface) {
 HostResult<EventBatch> HostMac::buildBatch(std::span<const QueuedEvent> events, const EventBuffer& buffer) {
   size_t count = std::min(buffer.events.size(), events.size());
   TextBufferWriter writer{buffer.textBytes, 0u};
+  auto needsTextPayload = [](const auto& payload) {
+    if (auto* input = std::get_if<InputEvent>(&payload)) {
+      return std::get_if<TextEvent>(input) != nullptr;
+    }
+    return std::holds_alternative<DropEvent>(payload);
+  };
   for (size_t i = 0; i < count; ++i) {
     Event out = events[i].event;
-    if (!events[i].text.empty()) {
+    if (!events[i].text.empty() || needsTextPayload(out.payload)) {
       auto span = writer.append(events[i].text);
       if (!span) {
         return std::unexpected(span.error());

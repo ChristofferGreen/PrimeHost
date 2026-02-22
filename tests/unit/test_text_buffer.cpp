@@ -48,6 +48,16 @@ PH_TEST("primehost.text_buffer", "invalid offset fails") {
   PH_CHECK(span.error().code == HostErrorCode::BufferTooSmall);
 }
 
+PH_TEST("primehost.text_buffer", "empty buffer accepts empty") {
+  std::array<char, 0> buffer{};
+  TextBufferWriter writer{std::span<char>(buffer.data(), buffer.size()), 0u};
+
+  auto span = writer.append("");
+  PH_CHECK(span.has_value());
+  PH_CHECK(span->offset == 0u);
+  PH_CHECK(span->length == 0u);
+}
+
 PH_TEST("primehost.text_buffer", "span overflow fails") {
   std::array<char, 4> buffer{};
   TextBufferWriter writer{std::span<char>(buffer.data(), buffer.size()),
