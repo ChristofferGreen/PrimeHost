@@ -2,6 +2,8 @@
 
 #include "tests/unit/test_helpers.h"
 
+#include <array>
+
 using namespace PrimeHost;
 
 TEST_SUITE_BEGIN("primehost.paths");
@@ -49,6 +51,28 @@ PH_TEST("primehost.paths", "app path queries") {
         PH_CHECK(tooSmall.error().code == HostErrorCode::BufferTooSmall);
       }
     }
+  }
+}
+
+PH_TEST("primehost.paths", "invalid path type") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto invalidSize = host->appPathSize(static_cast<AppPathType>(999));
+  PH_CHECK(!invalidSize.has_value());
+  if (!invalidSize.has_value()) {
+    PH_CHECK(invalidSize.error().code == HostErrorCode::InvalidConfig);
+  }
+
+  std::array<char, 4> buffer{};
+  auto invalidPath = host->appPath(static_cast<AppPathType>(999), buffer);
+  PH_CHECK(!invalidPath.has_value());
+  if (!invalidPath.has_value()) {
+    PH_CHECK(invalidPath.error().code == HostErrorCode::InvalidConfig);
   }
 }
 
