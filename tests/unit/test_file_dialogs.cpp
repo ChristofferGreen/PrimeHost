@@ -36,6 +36,13 @@ PH_TEST("primehost.dialogs", "file dialog buffer validation") {
     PH_CHECK(dirResult.error().code == HostErrorCode::BufferTooSmall);
   }
 
+  auto helperConfig = directoryDialogConfig("nope");
+  auto helperResult = host->fileDialog(helperConfig, emptyBuffer);
+  PH_CHECK(!helperResult.has_value());
+  if (!helperResult.has_value()) {
+    PH_CHECK(helperResult.error().code == HostErrorCode::BufferTooSmall);
+  }
+
   std::array<TextSpan, 1> spans{};
   std::array<char, 1> buffer{};
   std::span<TextSpan> emptySpans{};

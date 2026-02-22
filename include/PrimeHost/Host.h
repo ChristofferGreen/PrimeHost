@@ -231,6 +231,16 @@ struct FileDialogConfig {
   bool defaultDirectoryOnly = false;
 };
 
+inline FileDialogConfig directoryDialogConfig(Utf8TextView defaultPath = {}) {
+  FileDialogConfig config{};
+  config.mode = FileDialogMode::OpenDirectory;
+  if (!defaultPath.empty()) {
+    config.defaultPath = defaultPath;
+    config.defaultDirectoryOnly = true;
+  }
+  return config;
+}
+
 struct FileDialogResult {
   bool accepted = false;
   Utf8TextView path;
