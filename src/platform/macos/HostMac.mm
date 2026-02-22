@@ -1765,6 +1765,14 @@ HostStatus HostMac::destroySurface(SurfaceId surfaceId) {
   if (it == surfaces_.end()) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
+  if (it->second && it->second->headless) {
+    Event evt{};
+    evt.scope = Event::Scope::Surface;
+    evt.surfaceId = surfaceId;
+    evt.time = std::chrono::steady_clock::now();
+    evt.payload = LifecycleEvent{LifecyclePhase::Destroyed};
+    enqueueEvent(std::move(evt));
+  }
   if (relativePointerEnabled_ && relativePointerSurface_ && relativePointerSurface_->value == surfaceId.value) {
     releaseRelativePointer();
   }

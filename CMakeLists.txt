@@ -136,6 +136,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_power_events.cpp
     tests/unit/test_drop_event.cpp
     tests/unit/test_focus_event.cpp
+    tests/unit/test_lifecycle_events.cpp
     tests/unit/test_window_icon.cpp
     tests/unit/test_timing.cpp
     tests/unit/test_log_callback.cpp
