@@ -89,4 +89,37 @@ PH_TEST("primehost.clipboard_image", "buffer too small for image") {
   }
 }
 
+PH_TEST("primehost.clipboard_image", "no image after text") {
+  auto hostResult = createHost();
+  if (!hostResult) {
+    PH_CHECK(hostResult.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  auto host = std::move(hostResult.value());
+
+  auto setText = host->setClipboardText("PrimeHost");
+  if (!setText.has_value()) {
+    bool allowed = setText.error().code == HostErrorCode::Unsupported;
+    allowed = allowed || setText.error().code == HostErrorCode::PlatformFailure;
+    PH_CHECK(allowed);
+    return;
+  }
+
+  auto size = host->clipboardImageSize();
+  if (!size.has_value()) {
+    PH_CHECK(size.error().code == HostErrorCode::Unsupported);
+    return;
+  }
+  if (size.value().has_value()) {
+    return;
+  }
+
+  std::array<uint8_t, 4> buffer{};
+  auto image = host->clipboardImage(buffer);
+  PH_CHECK(image.has_value());
+  if (image.has_value()) {
+    PH_CHECK(!image->available);
+  }
+}
+
 TEST_SUITE_END();
