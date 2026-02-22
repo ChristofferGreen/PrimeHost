@@ -60,7 +60,8 @@ Device lists are filled into caller-provided spans with a `size_t` result.
 ## Permissions (Draft)
 - Camera/microphone/location/notifications permission queries and requests.
 - Default: unknown until queried; platforms may require prompts.
-- Implemented: `checkPermission`, `requestPermission` for camera/microphone/notifications on macOS.
+- Implemented: `checkPermission` for camera/microphone/notifications/location on macOS.
+- Implemented: `requestPermission` for camera/microphone/notifications on macOS.
 
 ## Idle Sleep / Screensaver (Draft)
 - Inhibit idle sleep or screensaver while critical work is active.

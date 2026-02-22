@@ -59,6 +59,7 @@ if(APPLE)
   find_library(AVFOUNDATION_LIBRARY AVFoundation)
   find_library(CARBON_LIBRARY Carbon)
   find_library(COCOA_LIBRARY Cocoa)
+  find_library(CORELOCATION_LIBRARY CoreLocation)
   find_library(GAMECONTROLLER_LIBRARY GameController)
   find_library(COREGRAPHICS_LIBRARY CoreGraphics)
   find_library(METAL_LIBRARY Metal)
@@ -73,6 +74,7 @@ if(APPLE)
     ${AVFOUNDATION_LIBRARY}
     ${CARBON_LIBRARY}
     ${COCOA_LIBRARY}
+    ${CORELOCATION_LIBRARY}
     ${GAMECONTROLLER_LIBRARY}
     ${COREGRAPHICS_LIBRARY}
     ${METAL_LIBRARY}

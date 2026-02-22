@@ -2,6 +2,7 @@
 #import <AVFoundation/AVCaptureDevice.h>
 #import <AVFoundation/AVMediaFormat.h>
 #import <Carbon/Carbon.h>
+#import <CoreLocation/CoreLocation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreVideo/CoreVideo.h>
 #import <CoreHaptics/CoreHaptics.h>
@@ -43,6 +44,7 @@ class HostMac;
 
 @class PHWindowDelegate;
 @class PHHostView;
+@class PHLocationDelegate;
 
 @interface PHWindowDelegate : NSObject <NSWindowDelegate>
 @property(nonatomic, assign) PrimeHost::HostMac* host;
@@ -158,6 +160,20 @@ PermissionStatus map_notification_status(UNAuthorizationStatus status) {
       return PermissionStatus::Unknown;
     case UNAuthorizationStatusProvisional:
       return PermissionStatus::Granted;
+    default:
+      return PermissionStatus::Unknown;
+  }
+}
+
+PermissionStatus map_location_status(CLAuthorizationStatus status) {
+  switch (status) {
+    case kCLAuthorizationStatusAuthorizedAlways:
+      return PermissionStatus::Granted;
+    case kCLAuthorizationStatusDenied:
+      return PermissionStatus::Denied;
+    case kCLAuthorizationStatusRestricted:
+      return PermissionStatus::Restricted;
+    case kCLAuthorizationStatusNotDetermined:
     default:
       return PermissionStatus::Unknown;
   }
@@ -763,6 +779,49 @@ static void hid_device_removed(void* context, IOReturn result, void* sender, IOH
 
 - (void)setImeRect:(NSRect)rect {
   imeRect_ = rect;
+}
+@end
+
+@interface PHLocationDelegate : NSObject <CLLocationManagerDelegate>
+- (instancetype)initWithSemaphore:(dispatch_semaphore_t)semaphore;
+- (CLAuthorizationStatus)status;
+@end
+
+@implementation PHLocationDelegate {
+  dispatch_semaphore_t semaphore_;
+  CLAuthorizationStatus status_;
+}
+
+- (instancetype)initWithSemaphore:(dispatch_semaphore_t)semaphore {
+  self = [super init];
+  if (self) {
+    semaphore_ = semaphore;
+    status_ = kCLAuthorizationStatusNotDetermined;
+  }
+  return self;
+}
+
+- (CLAuthorizationStatus)status {
+  return status_;
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager*)manager {
+  if (@available(macOS 11.0, *)) {
+    status_ = manager.authorizationStatus;
+  } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    status_ = [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+  }
+  dispatch_semaphore_signal(semaphore_);
+}
+
+- (void)locationManager:(CLLocationManager*)manager
+    didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
+  (void)manager;
+  status_ = status;
+  dispatch_semaphore_signal(semaphore_);
 }
 @end
 
@@ -1648,6 +1707,24 @@ HostResult<PermissionStatus> HostMac::checkPermission(PermissionType type) const
       }
       return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Location:
+      if (@available(macOS 10.15, *)) {
+        NSBundle* bundle = [NSBundle mainBundle];
+        if (!bundle || !bundle.bundleIdentifier) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        CLLocationManager* manager = [[CLLocationManager alloc] init];
+        CLAuthorizationStatus status = kCLAuthorizationStatusNotDetermined;
+        if (@available(macOS 11.0, *)) {
+          status = manager.authorizationStatus;
+        } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+          status = [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+        }
+        return map_location_status(status);
+      }
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Photos:
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
@@ -1689,6 +1766,27 @@ HostResult<PermissionStatus> HostMac::requestPermission(PermissionType type) {
       }
       return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Location:
+      if (@available(macOS 10.15, *)) {
+        NSBundle* bundle = [NSBundle mainBundle];
+        if (!bundle || !bundle.bundleIdentifier) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        NSString* usage = [bundle objectForInfoDictionaryKey:@"NSLocationWhenInUseUsageDescription"];
+        if (!usage) {
+          return std::unexpected(HostError{HostErrorCode::Unsupported});
+        }
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        PHLocationDelegate* delegate = [[PHLocationDelegate alloc] initWithSemaphore:semaphore];
+        CLLocationManager* manager = [[CLLocationManager alloc] init];
+        manager.delegate = delegate;
+        [manager requestWhenInUseAuthorization];
+        dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(5) * NSEC_PER_SEC);
+        if (dispatch_semaphore_wait(semaphore, timeout) != 0) {
+          return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+        }
+        return map_location_status([delegate status]);
+      }
+      return std::unexpected(HostError{HostErrorCode::Unsupported});
     case PermissionType::Photos:
     default:
       return std::unexpected(HostError{HostErrorCode::Unsupported});
