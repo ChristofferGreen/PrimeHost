@@ -29,6 +29,16 @@ PH_TEST("primehost.display", "display enumeration") {
   if (fillResult) {
     PH_CHECK(fillResult.value() == displays.size());
   }
+
+  if (!displays.empty()) {
+    auto info = host->displayInfo(displays[0].displayId);
+    PH_CHECK(info.has_value());
+    if (info) {
+      PH_CHECK(info->displayId == displays[0].displayId);
+      PH_CHECK(info->width == displays[0].width);
+      PH_CHECK(info->height == displays[0].height);
+    }
+  }
 }
 
 PH_TEST("primehost.display", "invalid display id") {
