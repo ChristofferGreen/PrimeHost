@@ -148,6 +148,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_frame_limiter.cpp
     tests/unit/test_gamepad_profiles.cpp
     tests/unit/test_gamepad_ids.cpp
+    tests/unit/test_request_frame.cpp
     tests/unit/test_smoke.cpp
     tests/unit/test_text_buffer.cpp
   )
