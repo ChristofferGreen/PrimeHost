@@ -4,6 +4,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 using namespace PrimeHost;
 
@@ -73,6 +74,13 @@ PH_TEST("primehost.clipboard", "text size and read") {
   PH_CHECK(!readTiny.has_value());
   if (!readTiny.has_value()) {
     PH_CHECK(readTiny.error().code == HostErrorCode::BufferTooSmall);
+  }
+
+  std::vector<char> buffer(size.value());
+  auto read = host->clipboardText(buffer);
+  PH_CHECK(read.has_value());
+  if (read.has_value()) {
+    PH_CHECK(read->size() == size.value());
   }
 }
 
