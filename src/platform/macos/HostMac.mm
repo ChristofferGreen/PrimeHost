@@ -752,6 +752,7 @@ private:
   dispatch_source_t hostLimiterTimer_ = nil;
   std::chrono::nanoseconds hostLimiterInterval_{0};
   std::optional<SurfaceId> focusedSurface_{};
+  bool cursorVisible_ = true;
   bool relativePointerEnabled_ = false;
   std::optional<SurfaceId> relativePointerSurface_{};
   uint64_t nextIdleSleepToken_ = 1u;
@@ -2197,6 +2198,10 @@ HostStatus HostMac::setCursorVisible(SurfaceId surfaceId, bool visible) {
   if (!surface->window) {
     return std::unexpected(HostError{HostErrorCode::InvalidSurface});
   }
+  cursorVisible_ = visible;
+  if (relativePointerEnabled_) {
+    return {};
+  }
   if (visible) {
     [NSCursor unhide];
   } else {
@@ -3485,7 +3490,9 @@ HostStatus HostMac::setRelativePointerCapture(SurfaceId surfaceId, bool enabled)
       releaseRelativePointer();
     }
     CGAssociateMouseAndMouseCursorPosition(false);
-    CGDisplayHideCursor(kCGDirectMainDisplay);
+    if (cursorVisible_) {
+      CGDisplayHideCursor(kCGDirectMainDisplay);
+    }
     relativePointerEnabled_ = true;
     relativePointerSurface_ = surfaceId;
     return {};
@@ -4287,7 +4294,11 @@ void HostMac::releaseRelativePointer() {
     return;
   }
   CGAssociateMouseAndMouseCursorPosition(true);
-  CGDisplayShowCursor(kCGDirectMainDisplay);
+  if (cursorVisible_) {
+    CGDisplayShowCursor(kCGDirectMainDisplay);
+  } else {
+    CGDisplayHideCursor(kCGDirectMainDisplay);
+  }
   relativePointerEnabled_ = false;
   relativePointerSurface_.reset();
 }
