@@ -3,6 +3,7 @@
 #include "tests/unit/test_helpers.h"
 
 #include <array>
+#include <string>
 
 using namespace PrimeHost;
 
@@ -60,6 +61,14 @@ PH_TEST("primehost.surface", "surface size round-trip") {
   PH_CHECK(scale.has_value());
   if (scale) {
     PH_CHECK(scale.value() > 0.0f);
+  }
+
+  std::string invalidTitle;
+  invalidTitle.push_back(static_cast<char>(0xFF));
+  auto badTitle = host->setSurfaceTitle(surface.value(), invalidTitle);
+  PH_CHECK(!badTitle.has_value());
+  if (!badTitle.has_value()) {
+    PH_CHECK(badTitle.error().code == HostErrorCode::InvalidConfig);
   }
 
   auto destroyed = host->destroySurface(surface.value());
