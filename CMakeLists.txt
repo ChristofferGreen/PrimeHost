@@ -190,7 +190,7 @@ if(PRIMEHOST_BUILD_EXAMPLES)
 endif()
 
 option(PRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE "Build PrimeHost PrimeStage UI example" OFF)
-set(PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeStage"
+set(PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY "https://github.com/ChristofferGreen/PrimeStage.git"
     CACHE STRING "PrimeStage git repository")
 set(PRIMEHOST_PRIMESTAGE_GIT_TAG "master" CACHE STRING "PrimeStage git tag or commit")
 
@@ -204,11 +204,6 @@ if(PRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE)
   set(PRIMESTAGE_ENABLE_PRIMEMANIFEST ON CACHE BOOL "Enable PrimeManifest integration" FORCE)
   set(PRIMESTAGE_BUILD_TESTS OFF CACHE BOOL "Build PrimeStage tests" FORCE)
   set(PRIMESTAGE_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeStage examples" FORCE)
-  set(PRIMEFRAME_GIT_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeFrame"
-      CACHE STRING "PrimeFrame git repository" FORCE)
-  set(PRIMESTAGE_PRIMEMANIFEST_GIT_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../PrimeManifest"
-      CACHE STRING "PrimeManifest git repository" FORCE)
-
   FetchContent_Declare(
     PrimeStage
     GIT_REPOSITORY ${PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY}
