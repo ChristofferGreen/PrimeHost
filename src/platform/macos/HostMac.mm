@@ -22,6 +22,7 @@
 #import <UniformTypeIdentifiers/UTType.h>
 #import <UserNotifications/UserNotifications.h>
 #import <dispatch/dispatch.h>
+#import <objc/message.h>
 
 #include "PrimeHost/Host.h"
 #include "DeviceNameMatch.h"
@@ -484,6 +485,18 @@ void apply_layer_config(SurfaceState& surface, const SurfaceCapabilities& caps) 
     if (caps.supportsVsyncToggle) {
       surface.layer.displaySyncEnabled = surface.frameConfig.vsync;
     }
+  }
+}
+
+static void apply_resize_redraw_policy(NSView* view) {
+  if (!view) {
+    return;
+  }
+  view.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
+  SEL selector = NSSelectorFromString(@"setLayerContentsPlacement:");
+  if ([view respondsToSelector:selector]) {
+    using MsgSend = void (*)(id, SEL, NSViewLayerContentsPlacement);
+    reinterpret_cast<MsgSend>(objc_msgSend)(view, selector, NSViewLayerContentsPlacementScaleAxesIndependently);
   }
 }
 uint32_t map_modifier_flags(NSEventModifierFlags flags) {
@@ -1780,7 +1793,7 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   view.host = this;
   view.surfaceId = surfaceId.value;
   view.wantsLayer = YES;
-  view.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
+  apply_resize_redraw_policy(view);
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   if ([view respondsToSelector:@selector(setAllowedTouchTypes:)]) {
     view.allowedTouchTypes = NSTouchTypeDirect | NSTouchTypeIndirect;
@@ -1796,9 +1809,16 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   layer.device = device;
   layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   layer.framebufferOnly = YES;
+  layer.presentsWithTransaction = YES;
+  layer.allowsNextDrawableTimeout = NO;
+  layer.needsDisplayOnBoundsChange = YES;
+  layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
   layer.contentsScale = window.backingScaleFactor;
   layer.drawableSize = CGSizeMake(rect.size.width * layer.contentsScale,
                                   rect.size.height * layer.contentsScale);
+  [CATransaction commit];
   view.layer = layer;
 
   window.contentView = view;
@@ -2115,7 +2135,10 @@ HostStatus HostMac::presentFrameBuffer(SurfaceId surfaceId, const FrameBuffer& b
         destinationOrigin:origin];
     [blit endEncoding];
 
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     [commandBuffer presentDrawable:drawable];
+    [CATransaction commit];
     slot.inFlight = true;
     auto* slotPtr = &slot;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> _Nonnull) {
@@ -3823,8 +3846,11 @@ void HostMac::handleResize(uint64_t surfaceId) {
   if (surface->layer && view) {
     CGFloat scale = surface->window.backingScaleFactor;
     NSRect bounds = view.bounds;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     surface->layer.contentsScale = scale;
     surface->layer.drawableSize = CGSizeMake(bounds.size.width * scale, bounds.size.height * scale);
+    [CATransaction commit];
 
     ResizeEvent resize{};
     resize.width = static_cast<uint32_t>(bounds.size.width);
@@ -4660,12 +4686,23 @@ HostStatus HostMac::presentEmptyFrame(SurfaceState& surface) {
     return std::unexpected(HostError{HostErrorCode::PlatformFailure});
   }
   @autoreleasepool {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    CGSize boundsSize = surface.layer.bounds.size;
+    CGFloat scale = surface.layer.contentsScale > 0.0 ? surface.layer.contentsScale : 1.0;
+    surface.layer.drawableSize =
+        CGSizeMake(static_cast<CGFloat>(boundsSize.width * scale),
+                   static_cast<CGFloat>(boundsSize.height * scale));
+    [CATransaction commit];
     id<CAMetalDrawable> drawable = [surface.layer nextDrawable];
     if (!drawable) {
       return std::unexpected(HostError{HostErrorCode::PlatformFailure});
     }
     id<MTLCommandBuffer> commandBuffer = [surface.commandQueue commandBuffer];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     [commandBuffer presentDrawable:drawable];
+    [CATransaction commit];
     [commandBuffer commit];
   }
   return {};

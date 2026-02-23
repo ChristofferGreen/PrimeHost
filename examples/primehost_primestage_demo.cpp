@@ -8,10 +8,10 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <cmath>
 #include <iostream>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -146,6 +146,9 @@ struct DemoUi {
   bool needsRebuild = true;
   bool layoutDirty = true;
   bool styleDirty = true;
+  PrimeFrame::NodeId fpsNode{};
+  std::chrono::steady_clock::time_point lastResizeEvent{};
+  std::chrono::steady_clock::time_point lastResizeLog{};
 };
 
 struct DemoState {
@@ -238,6 +241,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.frame = PrimeFrame::Frame{};
   ui.buttons.clear();
   ui.buttons.reserve(4);
+  ui.fpsNode = PrimeFrame::NodeId{};
 
   SizeSpec shellSize;
   shellSize.preferredWidth = ui.logicalWidth;
@@ -684,11 +688,23 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     lineSize.preferredHeight = StudioDefaults::StatusHeight;
     createTextLine(bar, "Ready", TextRole::SmallMuted, lineSize);
 
-    SizeSpec barSpacer;
-    barSpacer.stretchX = 1.0f;
-    bar.createSpacer(barSpacer);
+    SizeSpec spacer;
+    spacer.stretchX = 1.0f;
+    bar.createSpacer(spacer);
 
     createTextLine(bar, "PrimeFrame Demo", TextRole::SmallMuted, lineSize);
+
+    bar.createSpacer(spacer);
+
+    SizeSpec fpsSize;
+    fpsSize.preferredWidth = 120.0f;
+    fpsSize.preferredHeight = StudioDefaults::StatusHeight;
+    UiNode fpsNode = createTextLine(bar,
+                                    "FPS --",
+                                    TextRole::SmallMuted,
+                                    fpsSize,
+                                    PrimeFrame::TextAlign::End);
+    ui.fpsNode = fpsNode.nodeId();
   };
 
   createTopbar();
@@ -699,6 +715,16 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
 
   for (auto& button : ui.buttons) {
     attachButtonCallback(ui.frame, button, ui.styleDirty);
+  }
+
+  if (ui.fpsNode.isValid()) {
+    auto* node = ui.frame.getNode(ui.fpsNode);
+    if (node && !node->primitives.empty()) {
+      auto* prim = ui.frame.getPrimitive(node->primitives.front());
+      if (prim && prim->type == PrimeFrame::PrimitiveType::Text) {
+        prim->textBlock.text.reserve(32);
+      }
+    }
   }
 }
 
@@ -783,20 +809,12 @@ int main() {
 
   host->setCursorShape(surfaceId, CursorShape::Arrow);
 
-  std::array<PrimeHost::Event, 256> events{};
-  std::array<char, 8192> textBytes{};
-  EventBuffer buffer{
-      std::span<PrimeHost::Event>(events.data(), events.size()),
-      std::span<char>(textBytes.data(), textBytes.size()),
-  };
-
   DemoState state{};
   DemoUi ui{};
   ui.logicalWidth = static_cast<float>(config.width);
   ui.logicalHeight = static_cast<float>(config.height);
   ui.scale = 1.0f;
 
-  std::mutex uiMutex;
   FpsTracker fps{};
   bool running = true;
   bool fullscreen = false;
@@ -805,9 +823,10 @@ int main() {
   bool relativePointer = false;
   bool cursorIBeam = false;
 
+  Host* hostPtr = host.get();
   Callbacks callbacks{};
   callbacks.onFrame = [&](SurfaceId id, const FrameTiming&, const FrameDiagnostics&) {
-    std::lock_guard<std::mutex> lock(uiMutex);
+    auto now = std::chrono::steady_clock::now();
     auto frameResult = host->acquireFrameBuffer(id);
     if (!frameResult) {
       return;
@@ -820,7 +839,6 @@ int main() {
       ui.logicalWidth = logicalW;
       ui.logicalHeight = logicalH;
       ui.scale = scale;
-      ui.needsRebuild = true;
       ui.layoutDirty = true;
     }
 
@@ -856,6 +874,17 @@ int main() {
       fps.framePresented();
       if (fps.shouldReport() && fps.sampleCount() > 0u) {
         auto stats = fps.stats();
+        if (ui.fpsNode.isValid()) {
+          char buffer[32];
+          std::snprintf(buffer, sizeof(buffer), "FPS %.0f", stats.fps);
+          auto* node = ui.frame.getNode(ui.fpsNode);
+          if (node && !node->primitives.empty()) {
+            auto* prim = ui.frame.getPrimitive(node->primitives.front());
+            if (prim && prim->type == PrimeFrame::PrimitiveType::Text) {
+              prim->textBlock.text.assign(buffer);
+            }
+          }
+        }
         std::cout << "fps " << stats.fps
                   << " p95=" << std::chrono::duration<double, std::milli>(stats.p95FrameTime).count()
                   << "ms p99=" << std::chrono::duration<double, std::milli>(stats.p99FrameTime).count()
@@ -863,24 +892,7 @@ int main() {
       }
     }
   };
-  host->setCallbacks(callbacks);
-
-  std::cout << "Controls: ESC quit, F fullscreen, M minimize, X maximize, R relative pointer,"
-               " C copy, V paste, O open dialog, P screenshot, I toggle cursor." << std::endl;
-
-  while (running) {
-    host->waitEvents();
-
-    auto batchResult = host->pollEvents(buffer);
-    if (!batchResult) {
-      std::cerr << "pollEvents failed (" << static_cast<int>(batchResult.error().code) << ")\n";
-      continue;
-    }
-
-    const auto& batch = batchResult.value();
-
-    std::lock_guard<std::mutex> lock(uiMutex);
-
+  callbacks.onEvents = [&](const EventBatch& batch) {
     for (const auto& event : batch.events) {
       if (auto* input = std::get_if<InputEvent>(&event.payload)) {
         if (auto* pointer = std::get_if<PointerEvent>(input)) {
@@ -933,26 +945,26 @@ int main() {
             }
             if (key->keyCode == KeyF) {
               fullscreen = !fullscreen;
-              host->setSurfaceFullscreen(surfaceId, fullscreen);
+              hostPtr->setSurfaceFullscreen(surfaceId, fullscreen);
             } else if (key->keyCode == KeyM) {
               minimized = !minimized;
-              host->setSurfaceMinimized(surfaceId, minimized);
+              hostPtr->setSurfaceMinimized(surfaceId, minimized);
             } else if (key->keyCode == KeyX) {
               maximized = !maximized;
-              host->setSurfaceMaximized(surfaceId, maximized);
+              hostPtr->setSurfaceMaximized(surfaceId, maximized);
             } else if (key->keyCode == KeyR) {
               relativePointer = !relativePointer;
-              host->setRelativePointerCapture(surfaceId, relativePointer);
+              hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
             } else if (key->keyCode == KeyI) {
               cursorIBeam = !cursorIBeam;
-              host->setCursorShape(surfaceId, cursorIBeam ? CursorShape::IBeam : CursorShape::Arrow);
+              hostPtr->setCursorShape(surfaceId, cursorIBeam ? CursorShape::IBeam : CursorShape::Arrow);
             } else if (key->keyCode == KeyC) {
-              host->setClipboardText("PrimeHost clipboard sample");
+              hostPtr->setClipboardText("PrimeHost clipboard sample");
             } else if (key->keyCode == KeyV) {
-              auto size = host->clipboardTextSize();
+              auto size = hostPtr->clipboardTextSize();
               if (size && size.value() > 0u) {
                 std::vector<char> bufferText(size.value());
-                auto text = host->clipboardText(bufferText);
+                auto text = hostPtr->clipboardText(bufferText);
                 if (text) {
                   std::cout << "clipboard: " << text.value() << "\n";
                 }
@@ -961,14 +973,14 @@ int main() {
               FileDialogConfig dialog{};
               dialog.mode = FileDialogMode::OpenFile;
               std::array<char, 4096> pathBuffer{};
-              auto result = host->fileDialog(dialog, pathBuffer);
+              auto result = hostPtr->fileDialog(dialog, pathBuffer);
               if (result && result->accepted) {
                 std::cout << "selected: " << result->path << "\n";
               }
             } else if (key->keyCode == KeyP) {
               ScreenshotConfig shot{};
               shot.scope = ScreenshotScope::Surface;
-              auto status = host->writeSurfaceScreenshot(surfaceId, "/tmp/primehost-shot.png", shot);
+              auto status = hostPtr->writeSurfaceScreenshot(surfaceId, "/tmp/primehost-shot.png", shot);
               std::cout << "screenshot: " << (status ? "ok" : "failed") << "\n";
             }
           }
@@ -991,13 +1003,19 @@ int main() {
           std::cout << "gamepad axis id=" << axis->controlId << " value=" << axis->value << "\n";
         }
       } else if (auto* resize = std::get_if<ResizeEvent>(&event.payload)) {
-        std::cout << "resize " << resize->width << "x" << resize->height
-                  << " scale=" << resize->scale << "\n";
+        auto now = std::chrono::steady_clock::now();
+        ui.lastResizeEvent = now;
+        if (ui.lastResizeLog.time_since_epoch().count() == 0 ||
+            now - ui.lastResizeLog > std::chrono::milliseconds(500)) {
+          std::cout << "resize " << resize->width << "x" << resize->height
+                    << " scale=" << resize->scale << "\n";
+          ui.lastResizeLog = now;
+        }
         ui.logicalWidth = static_cast<float>(resize->width);
         ui.logicalHeight = static_cast<float>(resize->height);
         ui.scale = resize->scale;
-        ui.needsRebuild = true;
         ui.layoutDirty = true;
+        hostPtr->requestFrame(surfaceId, true);
       } else if (auto* drop = std::get_if<DropEvent>(&event.payload)) {
         dumpDropPaths(batch, *drop);
       } else if (auto* focus = std::get_if<FocusEvent>(&event.payload)) {
@@ -1014,6 +1032,15 @@ int main() {
         }
       }
     }
+  };
+  host->setCallbacks(callbacks);
+  host->requestFrame(surfaceId, true);
+
+  std::cout << "Controls: ESC quit, F fullscreen, M minimize, X maximize, R relative pointer,"
+               " C copy, V paste, O open dialog, P screenshot, I toggle cursor." << std::endl;
+
+  while (running) {
+    host->waitEvents();
   }
 
   host->destroySurface(surfaceId);
