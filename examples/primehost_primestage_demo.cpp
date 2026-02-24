@@ -5,7 +5,7 @@
 #include "PrimeFrame/Events.h"
 #include "PrimeFrame/Layout.h"
 #include "PrimeFrame/Theme.h"
-#include "demo/TextSelection.h"
+#include "PrimeStage/TextSelection.h"
 
 #include <algorithm>
 #include <array>
@@ -151,7 +151,7 @@ struct DemoUi {
   PrimeFrame::NodeId searchFieldNode{};
   PrimeFrame::NodeId boardTextNode{};
   PrimeStage::TreeViewSpec treeViewSpec{};
-  std::vector<PrimeHost::DemoText::WrappedLine> boardTextLines;
+  std::vector<PrimeStage::TextSelectionLine> boardTextLines;
   float boardLineHeight = 0.0f;
   struct TreeRowRef {
     PrimeStage::TreeNode* node = nullptr;
@@ -789,13 +789,11 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     paragraphSize.preferredWidth = boardTextWidth;
     PrimeFrame::TextStyleToken boardTextStyle = textToken(TextRole::SmallMuted);
     ui.boardLineHeight = resolveLineHeight(ui.frame, boardTextStyle);
-    ui.boardTextLines = PrimeHost::DemoText::wrapTextLineRanges(
-        state.boardText,
-        boardTextWidth,
-        PrimeFrame::WrapMode::Word,
-        [&](std::string_view text) {
-          return PrimeStage::measureTextWidth(ui.frame, boardTextStyle, text);
-        });
+    ui.boardTextLines = PrimeStage::wrapTextLineRanges(ui.frame,
+                                                       boardTextStyle,
+                                                       state.boardText,
+                                                       boardTextWidth,
+                                                       PrimeFrame::WrapMode::Word);
     float paragraphHeight = ui.boardLineHeight *
                             static_cast<float>(std::max<size_t>(1u, ui.boardTextLines.size()));
     StackSpec paragraphOverlaySpec;
@@ -1544,13 +1542,11 @@ int main(int argc, char** argv) {
             if (hitSearch) {
               const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
               float localX = searchOut ? (px - searchOut->absX) : 0.0f;
-              uint32_t cursorIndex = PrimeHost::DemoText::caretIndexForClick(
-                  state.searchText,
-                  16.0f,
-                  localX,
-                  [&](std::string_view text) {
-                    return PrimeStage::measureTextWidth(ui.frame, textToken(TextRole::BodyBright), text);
-                  });
+              uint32_t cursorIndex = PrimeStage::caretIndexForClick(ui.frame,
+                                                                    textToken(TextRole::BodyBright),
+                                                                    state.searchText,
+                                                                    16.0f,
+                                                                    localX);
               setSearchFocus(true, cursorIndex);
               state.searchSelecting = true;
               state.searchPointerId = static_cast<int>(pointer->pointerId);
@@ -1571,14 +1567,11 @@ int main(int argc, char** argv) {
                 lineIndex = std::clamp(lineIndex, 0, static_cast<int>(ui.boardTextLines.size() - 1u));
                 const auto& line = ui.boardTextLines[static_cast<size_t>(lineIndex)];
                 std::string_view lineText = state.boardText.substr(line.start, line.end - line.start);
-                cursorIndex = line.start + PrimeHost::DemoText::caretIndexForClick(
-                                                 lineText,
-                                                 0.0f,
-                                                 localX,
-                                                 [&](std::string_view text) {
-                                                   return PrimeStage::measureTextWidth(
-                                                       ui.frame, textToken(TextRole::SmallMuted), text);
-                                                 });
+                cursorIndex = line.start + PrimeStage::caretIndexForClick(ui.frame,
+                                                                          textToken(TextRole::SmallMuted),
+                                                                          lineText,
+                                                                          0.0f,
+                                                                          localX);
               }
               setBoardFocus(true, cursorIndex);
               state.boardSelecting = true;
@@ -1606,13 +1599,11 @@ int main(int argc, char** argv) {
               const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
               float px = static_cast<float>(pointer->x);
               float localX = searchOut ? (px - searchOut->absX) : 0.0f;
-              uint32_t cursorIndex = PrimeHost::DemoText::caretIndexForClick(
-                  state.searchText,
-                  16.0f,
-                  localX,
-                  [&](std::string_view text) {
-                    return PrimeStage::measureTextWidth(ui.frame, textToken(TextRole::BodyBright), text);
-                  });
+              uint32_t cursorIndex = PrimeStage::caretIndexForClick(ui.frame,
+                                                                    textToken(TextRole::BodyBright),
+                                                                    state.searchText,
+                                                                    16.0f,
+                                                                    localX);
               state.searchCursor = cursorIndex;
               state.searchSelectionStart = state.searchSelectionAnchor;
               state.searchSelectionEnd = cursorIndex;
@@ -1632,14 +1623,11 @@ int main(int argc, char** argv) {
                 lineIndex = std::clamp(lineIndex, 0, static_cast<int>(ui.boardTextLines.size() - 1u));
                 const auto& line = ui.boardTextLines[static_cast<size_t>(lineIndex)];
                 std::string_view lineText = state.boardText.substr(line.start, line.end - line.start);
-                cursorIndex = line.start + PrimeHost::DemoText::caretIndexForClick(
-                                                 lineText,
-                                                 0.0f,
-                                                 localX,
-                                                 [&](std::string_view text) {
-                                                   return PrimeStage::measureTextWidth(
-                                                       ui.frame, textToken(TextRole::SmallMuted), text);
-                                                 });
+                cursorIndex = line.start + PrimeStage::caretIndexForClick(ui.frame,
+                                                                          textToken(TextRole::SmallMuted),
+                                                                          lineText,
+                                                                          0.0f,
+                                                                          localX);
               }
               state.boardSelectionStart = state.boardSelectionAnchor;
               state.boardSelectionEnd = cursorIndex;
@@ -1747,12 +1735,12 @@ int main(int argc, char** argv) {
                     if (!hasSelection) {
                       state.searchSelectionAnchor = cursor;
                     }
-                  cursor = PrimeHost::DemoText::utf8Prev(state.searchText, cursor);
+                  cursor = PrimeStage::utf8Prev(state.searchText, cursor);
                     state.searchSelectionStart = state.searchSelectionAnchor;
                     state.searchSelectionEnd = cursor;
                     keepSelection = true;
                   } else {
-                  cursor = PrimeHost::DemoText::utf8Prev(state.searchText, cursor);
+                  cursor = PrimeStage::utf8Prev(state.searchText, cursor);
                     clearSearchSelection(state, cursor);
                   }
                   break;
@@ -1761,12 +1749,12 @@ int main(int argc, char** argv) {
                     if (!hasSelection) {
                       state.searchSelectionAnchor = cursor;
                     }
-                  cursor = PrimeHost::DemoText::utf8Next(state.searchText, cursor);
+                  cursor = PrimeStage::utf8Next(state.searchText, cursor);
                     state.searchSelectionStart = state.searchSelectionAnchor;
                     state.searchSelectionEnd = cursor;
                     keepSelection = true;
                   } else {
-                  cursor = PrimeHost::DemoText::utf8Next(state.searchText, cursor);
+                  cursor = PrimeStage::utf8Next(state.searchText, cursor);
                     clearSearchSelection(state, cursor);
                   }
                   break;
@@ -1803,7 +1791,7 @@ int main(int argc, char** argv) {
                     changed = true;
                     cursor = state.searchCursor;
                   } else if (cursor > 0u) {
-                    uint32_t start = PrimeHost::DemoText::utf8Prev(state.searchText, cursor);
+                    uint32_t start = PrimeStage::utf8Prev(state.searchText, cursor);
                     state.searchText.erase(start, cursor - start);
                     cursor = start;
                     changed = true;
@@ -1814,7 +1802,7 @@ int main(int argc, char** argv) {
                     changed = true;
                     cursor = state.searchCursor;
                   } else if (cursor < static_cast<uint32_t>(state.searchText.size())) {
-                    uint32_t end = PrimeHost::DemoText::utf8Next(state.searchText, cursor);
+                    uint32_t end = PrimeStage::utf8Next(state.searchText, cursor);
                     state.searchText.erase(cursor, end - cursor);
                     changed = true;
                   }
