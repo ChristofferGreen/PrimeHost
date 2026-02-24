@@ -651,6 +651,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
       spec.showCursor = state.searchFocused && state.searchCursorVisible;
       spec.cursorIndex = state.searchCursor;
       spec.cursorStyle = rectToken(RectRole::Accent);
+      spec.cursorWidth = 2.0f;
       spec.selectionStart = state.searchSelectionStart;
       spec.selectionEnd = state.searchSelectionEnd;
       spec.selectionStyle = rectToken(RectRole::Selection);
@@ -1517,7 +1518,9 @@ int main(int argc, char** argv) {
           if (key->pressed) {
             bool altPressed = (key->modifiers &
                                static_cast<KeyModifierMask>(KeyModifier::Alt)) != 0u;
-            if (altPressed && key->keyCode == KeyQ && !key->repeat) {
+            bool superPressed = (key->modifiers &
+                                 static_cast<KeyModifierMask>(KeyModifier::Super)) != 0u;
+            if ((altPressed || superPressed) && key->keyCode == KeyQ && !key->repeat) {
               running = false;
               continue;
             }
