@@ -30,3 +30,9 @@ Defines naming and coding rules plus build/test entrypoints for contributors wor
 
 ## Collaboration
 - When you make commits or change existing commits, always report the repo(s) and commit hashes in your response.
+
+## Workflow
+- For UI regressions: reproduce in the demo first, implement the fix, then verify the behavior (and add a test if the issue is testable).
+
+## Dependencies
+- Only change FetchContent repository pins or source directory overrides when required, and always report exactly what changed.
