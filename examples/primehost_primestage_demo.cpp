@@ -4,7 +4,12 @@
 
 #include "PrimeFrame/Events.h"
 #include "PrimeFrame/Layout.h"
+#if __has_include("PrimeStage/TextSelection.h")
 #include "PrimeStage/TextSelection.h"
+#define PRIMEHOST_STUDIO_EXTENDED_API 1
+#else
+#define PRIMEHOST_STUDIO_EXTENDED_API 0
+#endif
 
 #include <algorithm>
 #include <array>
@@ -53,6 +58,50 @@ constexpr uint32_t KeyO = 0x12u;
 constexpr uint32_t KeyP = 0x13u;
 constexpr uint32_t KeyI = 0x0Cu;
 constexpr auto SearchBlinkInterval = std::chrono::milliseconds(500);
+
+#if !PRIMEHOST_STUDIO_EXTENDED_API
+uint32_t fallbackCursorIndexForClick(std::string_view text, float paddingX, float localX) {
+  float x = std::max(0.0f, localX - paddingX);
+  constexpr float kApproxCharWidth = 8.0f;
+  size_t index = static_cast<size_t>(std::lround(x / kApproxCharWidth));
+  if (index > text.size()) {
+    index = text.size();
+  }
+  return static_cast<uint32_t>(index);
+}
+
+} // namespace
+
+namespace PrimeStage {
+
+uint32_t utf8Prev(std::string_view text, uint32_t index) {
+  if (text.empty() || index == 0u) {
+    return 0u;
+  }
+  uint32_t i = std::min<uint32_t>(index, static_cast<uint32_t>(text.size()));
+  do {
+    --i;
+  } while (i > 0u && (static_cast<unsigned char>(text[i]) & 0xC0u) == 0x80u);
+  return i;
+}
+
+uint32_t utf8Next(std::string_view text, uint32_t index) {
+  uint32_t size = static_cast<uint32_t>(text.size());
+  uint32_t i = std::min<uint32_t>(index, size);
+  if (i >= size) {
+    return size;
+  }
+  ++i;
+  while (i < size && (static_cast<unsigned char>(text[i]) & 0xC0u) == 0x80u) {
+    ++i;
+  }
+  return i;
+}
+
+} // namespace PrimeStage
+
+namespace {
+#endif
 
 std::string_view deviceTypeLabel(DeviceType type) {
   switch (type) {
@@ -151,7 +200,9 @@ struct DemoUi {
   PrimeFrame::NodeId treeViewNode{};
   PrimeFrame::NodeId searchFieldNode{};
   PrimeFrame::NodeId boardTextNode{};
+#if PRIMEHOST_STUDIO_EXTENDED_API
   PrimeStage::TextSelectionLayout boardTextLayout{};
+#endif
   float cursorX = 0.0f;
   float cursorY = 0.0f;
   float logicalWidth = 0.0f;
@@ -557,7 +608,9 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.treeViewNode = PrimeFrame::NodeId{};
   ui.searchFieldNode = PrimeFrame::NodeId{};
   ui.boardTextNode = PrimeFrame::NodeId{};
+#if PRIMEHOST_STUDIO_EXTENDED_API
   ui.boardTextLayout = {};
+#endif
   ui.focus = PrimeFrame::FocusManager{};
   ensureTreeState(state);
   updateOpacityLabel(state);
@@ -640,6 +693,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
       spec.backgroundStyle = rectToken(RectRole::Panel);
       spec.textStyle = textToken(TextRole::BodyBright);
       spec.placeholderStyle = textToken(TextRole::BodyMuted);
+#if PRIMEHOST_STUDIO_EXTENDED_API
       spec.showCursor = state.searchFocused && state.searchCursorVisible;
       spec.cursorIndex = state.searchCursor;
       spec.cursorStyle = rectToken(RectRole::Accent);
@@ -647,6 +701,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
       spec.selectionStart = state.searchSelectionStart;
       spec.selectionEnd = state.searchSelectionEnd;
       spec.selectionStyle = rectToken(RectRole::Selection);
+#endif
       UiNode searchField = row.createTextField(spec);
       ui.searchFieldNode = searchField.nodeId();
     }
@@ -729,11 +784,15 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     treeSpec.base.linkEndInset = 0.0f;
     treeSpec.base.selectionAccentWidth = 2.0f;
     treeSpec.base.scrollBar.thumbProgress = state.treeScrollProgress;
+#if PRIMEHOST_STUDIO_EXTENDED_API
     treeSpec.base.scrollBar.trackHoverOpacity = 0.7f;
     treeSpec.base.scrollBar.thumbHoverOpacity = 0.9f;
+#endif
     treeSpec.rowRole = RectRole::PanelAlt;
     treeSpec.rowAltRole = RectRole::Panel;
+#if PRIMEHOST_STUDIO_EXTENDED_API
     treeSpec.hoverRole = RectRole::PanelStrong;
+#endif
     treeSpec.caretBackgroundRole = RectRole::PanelStrong;
     treeSpec.caretLineRole = RectRole::Accent;
     treeSpec.connectorRole = RectRole::Accent;
@@ -744,6 +803,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
                             StudioDefaults::PanelInset * 4.0f;
     treeSpec.base.size.preferredWidth = sidebarW - StudioDefaults::PanelInset * 2.0f;
     treeSpec.base.size.preferredHeight = std::max(0.0f, treePanelHeight);
+#if PRIMEHOST_STUDIO_EXTENDED_API
     treeSpec.base.callbacks.onSelectionChanged = [&](const PrimeStage::TreeViewRowInfo& row) {
       if (setTreeSelectionByPath(state, row.path)) {
         ui.renderDirty = true;
@@ -762,6 +822,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
       ui.layoutDirty = true;
       ui.renderDirty = true;
     };
+#endif
 
     treeSpec.base.nodes = state.treeNodes;
     UiNode treeView = createTreeView(treePanel, treeSpec);
@@ -809,9 +870,10 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     titleSize.preferredHeight = StudioDefaults::TitleHeight;
     createTextLine(boardPanel, "Active Board", TextRole::SmallMuted, titleSize);
 
+    PrimeFrame::TextStyleToken boardTextStyle = textToken(TextRole::SmallMuted);
+#if PRIMEHOST_STUDIO_EXTENDED_API
     SizeSpec paragraphSize;
     paragraphSize.preferredWidth = boardTextWidth;
-    PrimeFrame::TextStyleToken boardTextStyle = textToken(TextRole::SmallMuted);
     ui.boardTextLayout = PrimeStage::buildTextSelectionLayout(ui.frame,
                                                               boardTextStyle,
                                                               state.boardText,
@@ -844,6 +906,16 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     paragraphSpec.maxWidth = boardTextWidth;
     paragraphSpec.size = paragraphSize;
     paragraphOverlay.createParagraph(paragraphSpec);
+#else
+    ParagraphSpec paragraphSpec;
+    paragraphSpec.text = state.boardText;
+    paragraphSpec.textStyle = boardTextStyle;
+    paragraphSpec.maxWidth = boardTextWidth;
+    paragraphSpec.autoHeight = true;
+    paragraphSpec.size.preferredWidth = boardTextWidth;
+    UiNode paragraph = boardPanel.createParagraph(paragraphSpec);
+    ui.boardTextNode = paragraph.nodeId();
+#endif
 
     StackSpec buttonRowSpec;
     buttonRowSpec.size.preferredWidth = boardTextWidth;
@@ -1035,6 +1107,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     opacitySlider.fillStyle = rectToken(RectRole::Accent);
     opacitySlider.thumbStyle = rectToken(RectRole::PanelAlt);
     opacitySlider.trackStyleOverride.opacity = 0.55f;
+#if PRIMEHOST_STUDIO_EXTENDED_API
     opacitySlider.trackHoverOpacity = 0.65f;
     opacitySlider.trackPressedOpacity = 0.6f;
     opacitySlider.fillStyleOverride.opacity = 0.8f;
@@ -1061,6 +1134,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
         }
       }
     };
+#endif
     opacityOverlay.createSlider(opacitySlider);
 
     SizeSpec opacityLabelSize;
@@ -1554,11 +1628,15 @@ int main(int argc, char** argv) {
             if (hitSearch) {
               const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
               float localX = searchOut ? (px - searchOut->absX) : 0.0f;
+#if PRIMEHOST_STUDIO_EXTENDED_API
               uint32_t cursorIndex = PrimeStage::caretIndexForClick(ui.frame,
                                                                     textToken(TextRole::BodyBright),
                                                                     state.searchText,
                                                                     16.0f,
                                                                     localX);
+#else
+              uint32_t cursorIndex = fallbackCursorIndexForClick(state.searchText, 16.0f, localX);
+#endif
               setSearchFocus(true, cursorIndex);
               state.searchSelecting = true;
               state.searchPointerId = static_cast<int>(pointer->pointerId);
@@ -1573,6 +1651,7 @@ int main(int argc, char** argv) {
               const PrimeFrame::LayoutOut* boardOut = ui.layout.get(ui.boardTextNode);
               float localX = boardOut ? (px - boardOut->absX) : 0.0f;
               float localY = boardOut ? (py - boardOut->absY) : 0.0f;
+#if PRIMEHOST_STUDIO_EXTENDED_API
               uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
                                                                             textToken(TextRole::SmallMuted),
                                                                             state.boardText,
@@ -1580,6 +1659,9 @@ int main(int argc, char** argv) {
                                                                             0.0f,
                                                                             localX,
                                                                             localY);
+#else
+              uint32_t cursorIndex = fallbackCursorIndexForClick(state.boardText, 0.0f, localX);
+#endif
               setBoardFocus(true, cursorIndex);
               state.boardSelecting = true;
               state.boardPointerId = static_cast<int>(pointer->pointerId);
@@ -1600,11 +1682,15 @@ int main(int argc, char** argv) {
               const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
               float px = static_cast<float>(pointer->x);
               float localX = searchOut ? (px - searchOut->absX) : 0.0f;
+#if PRIMEHOST_STUDIO_EXTENDED_API
               uint32_t cursorIndex = PrimeStage::caretIndexForClick(ui.frame,
                                                                     textToken(TextRole::BodyBright),
                                                                     state.searchText,
                                                                     16.0f,
                                                                     localX);
+#else
+              uint32_t cursorIndex = fallbackCursorIndexForClick(state.searchText, 16.0f, localX);
+#endif
               state.searchCursor = cursorIndex;
               state.searchSelectionStart = state.searchSelectionAnchor;
               state.searchSelectionEnd = cursorIndex;
@@ -1618,6 +1704,7 @@ int main(int argc, char** argv) {
               float px = static_cast<float>(pointer->x);
               float localX = boardOut ? (px - boardOut->absX) : 0.0f;
               float localY = boardOut ? (static_cast<float>(pointer->y) - boardOut->absY) : 0.0f;
+#if PRIMEHOST_STUDIO_EXTENDED_API
               uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
                                                                             textToken(TextRole::SmallMuted),
                                                                             state.boardText,
@@ -1625,6 +1712,9 @@ int main(int argc, char** argv) {
                                                                             0.0f,
                                                                             localX,
                                                                             localY);
+#else
+              uint32_t cursorIndex = fallbackCursorIndexForClick(state.boardText, 0.0f, localX);
+#endif
               state.boardSelectionStart = state.boardSelectionAnchor;
               state.boardSelectionEnd = cursorIndex;
               markBoardDirty();

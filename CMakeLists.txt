@@ -206,7 +206,7 @@ if(PRIMEHOST_BUILD_EXAMPLES)
     set(PRIMESTAGE_FETCH_PRIMEFRAME ON CACHE BOOL "Fetch PrimeFrame dependency" FORCE)
     set(PRIMESTAGE_BUILD_TESTS OFF CACHE BOOL "Build PrimeStage tests" FORCE)
     set(PRIMESTAGE_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeStage examples" FORCE)
-    set(PRIMESTUDIO_FETCH_PRIMESTAGE ON CACHE BOOL "Fetch PrimeStage dependency" FORCE)
+    set(PRIMESTUDIO_FETCH_PRIMESTAGE OFF CACHE BOOL "Fetch PrimeStage dependency" FORCE)
     set(PRIMESTUDIO_BUILD_TESTS OFF CACHE BOOL "Build PrimeStudio tests" FORCE)
     set(PRIMESTUDIO_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeStudio examples" FORCE)
     set(PRIMESTUDIO_ENABLE_PRIMEMANIFEST ON CACHE BOOL "Enable PrimeManifest integration" FORCE)
@@ -215,6 +215,12 @@ if(PRIMEHOST_BUILD_EXAMPLES)
     set(PRIMESTUDIO_PRIMESTAGE_GIT_TAG ${PRIMEHOST_PRIMESTAGE_GIT_TAG}
         CACHE STRING "PrimeStage git tag or commit" FORCE)
     FetchContent_Declare(
+      PrimeStage
+      GIT_REPOSITORY ${PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY}
+      GIT_TAG ${PRIMEHOST_PRIMESTAGE_GIT_TAG}
+    )
+    FetchContent_MakeAvailable(PrimeStage)
+    FetchContent_Declare(
       PrimeStudio
       GIT_REPOSITORY ${PRIMEHOST_PRIMESTUDIO_GIT_REPOSITORY}
       GIT_TAG ${PRIMEHOST_PRIMESTUDIO_GIT_TAG}
@@ -222,7 +228,10 @@ if(PRIMEHOST_BUILD_EXAMPLES)
     FetchContent_MakeAvailable(PrimeStudio)
 
     add_executable(primehost_primestage_demo examples/primehost_primestage_demo.cpp)
-    target_link_libraries(primehost_primestage_demo PRIVATE PrimeHost PrimeStudio)
+    target_link_libraries(primehost_primestage_demo PRIVATE PrimeHost PrimeStage)
+    if(TARGET PrimeStudio)
+      target_link_libraries(primehost_primestage_demo PRIVATE PrimeStudio)
+    endif()
     target_include_directories(primehost_primestage_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     ph_require_cxx23(primehost_primestage_demo)
   endif()
