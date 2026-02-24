@@ -33,6 +33,7 @@ constexpr uint32_t KeyReturn = 0x28u;
 constexpr uint32_t KeyBackspace = 0x2Au;
 constexpr uint32_t KeyTab = 0x2Bu;
 constexpr uint32_t KeyA = 0x04u;
+constexpr uint32_t KeyQ = 0x14u;
 constexpr uint32_t KeyDelete = 0x4Cu;
 constexpr uint32_t KeyEnd = 0x4Du;
 constexpr uint32_t KeyRight = 0x4Fu;
@@ -1514,6 +1515,12 @@ int main(int argc, char** argv) {
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
           if (key->pressed) {
+            bool altPressed = (key->modifiers &
+                               static_cast<KeyModifierMask>(KeyModifier::Alt)) != 0u;
+            if (altPressed && key->keyCode == KeyQ && !key->repeat) {
+              running = false;
+              continue;
+            }
             if (state.searchFocused) {
               bool hasSelection = false;
               uint32_t selectionStart = 0u;
@@ -1532,6 +1539,8 @@ int main(int argc, char** argv) {
                                  static_cast<KeyModifierMask>(KeyModifier::Super)) != 0u ||
                                 (key->modifiers &
                                  static_cast<KeyModifierMask>(KeyModifier::Control)) != 0u;
+              bool shiftPressed = (key->modifiers &
+                                   static_cast<KeyModifierMask>(KeyModifier::Shift)) != 0u;
               if (isShortcut && !key->repeat) {
                 if (key->keyCode == KeyA) {
                   state.searchSelectionStart = 0u;
@@ -1583,22 +1592,67 @@ int main(int argc, char** argv) {
                 }
               }
               bool changed = false;
+              bool keepSelection = false;
               uint32_t cursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
               switch (key->keyCode) {
                 case KeyEscape:
                   setSearchFocus(false, std::nullopt);
                   continue;
                 case KeyLeft:
-                  cursor = utf8Prev(state.searchText, cursor);
+                  if (shiftPressed) {
+                    if (!hasSelection) {
+                      state.searchSelectionAnchor = cursor;
+                    }
+                    cursor = utf8Prev(state.searchText, cursor);
+                    state.searchSelectionStart = state.searchSelectionAnchor;
+                    state.searchSelectionEnd = cursor;
+                    keepSelection = true;
+                  } else {
+                    cursor = utf8Prev(state.searchText, cursor);
+                    clearSearchSelection(state, cursor);
+                  }
                   break;
                 case KeyRight:
-                  cursor = utf8Next(state.searchText, cursor);
+                  if (shiftPressed) {
+                    if (!hasSelection) {
+                      state.searchSelectionAnchor = cursor;
+                    }
+                    cursor = utf8Next(state.searchText, cursor);
+                    state.searchSelectionStart = state.searchSelectionAnchor;
+                    state.searchSelectionEnd = cursor;
+                    keepSelection = true;
+                  } else {
+                    cursor = utf8Next(state.searchText, cursor);
+                    clearSearchSelection(state, cursor);
+                  }
                   break;
                 case KeyHome:
-                  cursor = 0u;
+                  if (shiftPressed) {
+                    if (!hasSelection) {
+                      state.searchSelectionAnchor = cursor;
+                    }
+                    cursor = 0u;
+                    state.searchSelectionStart = state.searchSelectionAnchor;
+                    state.searchSelectionEnd = cursor;
+                    keepSelection = true;
+                  } else {
+                    cursor = 0u;
+                    clearSearchSelection(state, cursor);
+                  }
                   break;
                 case KeyEnd:
-                  cursor = static_cast<uint32_t>(state.searchText.size());
+                  if (shiftPressed) {
+                    if (!hasSelection) {
+                      state.searchSelectionAnchor = cursor;
+                    }
+                    cursor = static_cast<uint32_t>(state.searchText.size());
+                    state.searchSelectionStart = state.searchSelectionAnchor;
+                    state.searchSelectionEnd = cursor;
+                    keepSelection = true;
+                  } else {
+                    cursor = static_cast<uint32_t>(state.searchText.size());
+                    clearSearchSelection(state, cursor);
+                  }
                   break;
                 case KeyBackspace:
                   if (deleteSelection()) {
@@ -1631,7 +1685,9 @@ int main(int argc, char** argv) {
               }
               if (cursor != state.searchCursor || changed) {
                 state.searchCursor = cursor;
-                clearSearchSelection(state, cursor);
+                if (!keepSelection) {
+                  clearSearchSelection(state, cursor);
+                }
                 resetSearchBlink();
                 markSearchDirty();
               }
