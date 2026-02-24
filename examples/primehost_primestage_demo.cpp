@@ -823,7 +823,8 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
       if (hasSelection && selectionEnd > line.start && selectionStart < line.end) {
         uint32_t localStart = std::max(selectionStart, line.start) - line.start;
         uint32_t localEnd = std::min(selectionEnd, line.end) - line.start;
-        std::string_view lineText = state.boardText.substr(line.start, line.end - line.start);
+        std::string_view lineText(state.boardText.data() + line.start,
+                                  line.end - line.start);
         leftWidth = PrimeStage::measureTextWidth(ui.frame, boardTextStyle, lineText.substr(0, localStart));
         float rightWidth = PrimeStage::measureTextWidth(ui.frame, boardTextStyle, lineText.substr(0, localEnd));
         selectWidth = std::max(0.0f, rightWidth - leftWidth);
@@ -1566,7 +1567,8 @@ int main(int argc, char** argv) {
                 int lineIndex = static_cast<int>(localY / ui.boardLineHeight);
                 lineIndex = std::clamp(lineIndex, 0, static_cast<int>(ui.boardTextLines.size() - 1u));
                 const auto& line = ui.boardTextLines[static_cast<size_t>(lineIndex)];
-                std::string_view lineText = state.boardText.substr(line.start, line.end - line.start);
+                std::string_view lineText(state.boardText.data() + line.start,
+                                          line.end - line.start);
                 cursorIndex = line.start + PrimeStage::caretIndexForClick(ui.frame,
                                                                           textToken(TextRole::SmallMuted),
                                                                           lineText,
@@ -1622,7 +1624,8 @@ int main(int argc, char** argv) {
                 int lineIndex = static_cast<int>(localY / ui.boardLineHeight);
                 lineIndex = std::clamp(lineIndex, 0, static_cast<int>(ui.boardTextLines.size() - 1u));
                 const auto& line = ui.boardTextLines[static_cast<size_t>(lineIndex)];
-                std::string_view lineText = state.boardText.substr(line.start, line.end - line.start);
+                std::string_view lineText(state.boardText.data() + line.start,
+                                          line.end - line.start);
                 cursorIndex = line.start + PrimeStage::caretIndexForClick(ui.frame,
                                                                           textToken(TextRole::SmallMuted),
                                                                           lineText,
