@@ -29,6 +29,16 @@ using namespace PrimeStage::Studio;
 namespace {
 
 constexpr uint32_t KeyEscape = 0x29u;
+constexpr uint32_t KeyReturn = 0x28u;
+constexpr uint32_t KeyBackspace = 0x2Au;
+constexpr uint32_t KeyTab = 0x2Bu;
+constexpr uint32_t KeyDelete = 0x4Cu;
+constexpr uint32_t KeyEnd = 0x4Du;
+constexpr uint32_t KeyRight = 0x4Fu;
+constexpr uint32_t KeyLeft = 0x50u;
+constexpr uint32_t KeyDown = 0x51u;
+constexpr uint32_t KeyUp = 0x52u;
+constexpr uint32_t KeyHome = 0x4Au;
 constexpr uint32_t KeyF = 0x09u;
 constexpr uint32_t KeyM = 0x10u;
 constexpr uint32_t KeyX = 0x1Bu;
@@ -38,6 +48,7 @@ constexpr uint32_t KeyV = 0x19u;
 constexpr uint32_t KeyO = 0x12u;
 constexpr uint32_t KeyP = 0x13u;
 constexpr uint32_t KeyI = 0x0Cu;
+constexpr auto SearchBlinkInterval = std::chrono::milliseconds(500);
 
 std::string_view deviceTypeLabel(DeviceType type) {
   switch (type) {
@@ -133,6 +144,7 @@ struct DemoUi {
   PrimeFrame::LayoutOutput layout;
   PrimeFrame::EventRouter router;
   PrimeFrame::NodeId treeViewNode{};
+  PrimeFrame::NodeId searchFieldNode{};
   PrimeStage::TreeViewSpec treeViewSpec{};
   struct TreeRowRef {
     PrimeStage::TreeNode* node = nullptr;
@@ -157,6 +169,11 @@ struct DemoState {
   std::vector<PrimeStage::TreeNode> treeNodes;
   float opacity = 0.85f;
   std::string opacityLabel;
+  std::string searchText;
+  uint32_t searchCursor = 0u;
+  bool searchFocused = false;
+  bool searchCursorVisible = false;
+  std::chrono::steady_clock::time_point nextSearchBlink{};
 };
 
 void updateOpacityLabel(DemoState& state) {
@@ -470,14 +487,47 @@ bool handleTreeClick(DemoUi& ui, DemoState& state, float px, float py) {
   return false;
 }
 
+bool isUtf8Continuation(uint8_t value) {
+  return (value & 0xC0u) == 0x80u;
+}
+
+uint32_t utf8Prev(std::string_view text, uint32_t index) {
+  if (index == 0u) {
+    return 0u;
+  }
+  uint32_t size = static_cast<uint32_t>(text.size());
+  uint32_t i = std::min(index, size);
+  if (i > 0u) {
+    --i;
+  }
+  while (i > 0u && isUtf8Continuation(static_cast<uint8_t>(text[i]))) {
+    --i;
+  }
+  return i;
+}
+
+uint32_t utf8Next(std::string_view text, uint32_t index) {
+  uint32_t size = static_cast<uint32_t>(text.size());
+  if (index >= size) {
+    return size;
+  }
+  uint32_t i = index + 1u;
+  while (i < size && isUtf8Continuation(static_cast<uint8_t>(text[i]))) {
+    ++i;
+  }
+  return i;
+}
+
 void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.frame = PrimeFrame::Frame{};
   ui.fpsNode = PrimeFrame::NodeId{};
   ui.opacityValueNode = PrimeFrame::NodeId{};
   ui.treeViewNode = PrimeFrame::NodeId{};
+  ui.searchFieldNode = PrimeFrame::NodeId{};
   ui.treeRows.clear();
   ensureTreeState(state);
   updateOpacityLabel(state);
+  state.searchCursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
 
   SizeSpec shellSize;
   shellSize.preferredWidth = ui.logicalWidth;
@@ -523,7 +573,26 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     row.createDivider(rectToken(RectRole::Divider),
                       fixed(StudioDefaults::DividerThickness, StudioDefaults::ControlHeight));
     row.createSpacer(fixed(StudioDefaults::PanelInset, StudioDefaults::ControlHeight));
-    createTextField(row, "Search...", {});
+    {
+      TextFieldSpec spec;
+      spec.text = state.searchText;
+      spec.placeholder = "Search...";
+      spec.size = {};
+      if (!spec.size.preferredHeight.has_value() && spec.size.stretchY <= 0.0f) {
+        spec.size.preferredHeight = StudioDefaults::ControlHeight;
+      }
+      if (!spec.size.minWidth.has_value() && spec.size.stretchX <= 0.0f) {
+        spec.size.minWidth = StudioDefaults::FieldWidthL;
+      }
+      spec.backgroundStyle = rectToken(RectRole::Panel);
+      spec.textStyle = textToken(TextRole::BodyBright);
+      spec.placeholderStyle = textToken(TextRole::BodyMuted);
+      spec.showCursor = state.searchFocused && state.searchCursorVisible;
+      spec.cursorIndex = state.searchCursor;
+      spec.cursorStyle = rectToken(RectRole::Accent);
+      UiNode searchField = row.createTextField(spec);
+      ui.searchFieldNode = searchField.nodeId();
+    }
 
     SizeSpec spacer;
     spacer.stretchX = 1.0f;
@@ -1052,6 +1121,7 @@ int main(int argc, char** argv) {
   }
   frameConfig.framePacingSource = FramePacingSource::Platform;
   host->setFrameConfig(surfaceId, frameConfig);
+  FramePolicy baseFramePolicy = frameConfig.framePolicy;
 
   auto surfaceCaps = host->surfaceCapabilities(surfaceId);
   if (surfaceCaps) {
@@ -1085,12 +1155,39 @@ int main(int argc, char** argv) {
   bool suppressEventLogs = perfEnabled;
 
   Host* hostPtr = host.get();
+  auto setFramePolicy = [&](FramePolicy policy) {
+    if (frameConfig.framePolicy == policy) {
+      return;
+    }
+    frameConfig.framePolicy = policy;
+    hostPtr->setFrameConfig(surfaceId, frameConfig);
+  };
   auto markRenderDirty = [&]() {
     ui.renderDirty = true;
   };
   Callbacks callbacks{};
   callbacks.onFrame = [&](SurfaceId id, const FrameTiming&, const FrameDiagnostics&) {
     auto now = std::chrono::steady_clock::now();
+    bool blinkChanged = false;
+    if (state.searchFocused) {
+      if (state.nextSearchBlink.time_since_epoch().count() == 0) {
+        state.searchCursorVisible = true;
+        state.nextSearchBlink = now + SearchBlinkInterval;
+        blinkChanged = true;
+      } else if (now >= state.nextSearchBlink) {
+        state.searchCursorVisible = !state.searchCursorVisible;
+        state.nextSearchBlink = now + SearchBlinkInterval;
+        blinkChanged = true;
+      }
+    } else if (state.searchCursorVisible || state.nextSearchBlink.time_since_epoch().count() != 0) {
+      state.searchCursorVisible = false;
+      state.nextSearchBlink = {};
+      blinkChanged = true;
+    }
+    if (blinkChanged) {
+      ui.needsRebuild = true;
+      ui.renderDirty = true;
+    }
     bool reportFps = !perfEnabled && fps.shouldReport() && fps.sampleCount() > 0u;
     FpsStats fpsStats{};
     if (reportFps) {
@@ -1222,6 +1319,36 @@ int main(int argc, char** argv) {
     }
   };
   callbacks.onEvents = [&](const EventBatch& batch) {
+    auto now = std::chrono::steady_clock::now();
+    auto markSearchDirty = [&]() {
+      ui.needsRebuild = true;
+      ui.layoutDirty = true;
+      ui.renderDirty = true;
+      markRenderDirty();
+    };
+    auto resetSearchBlink = [&]() {
+      state.searchCursorVisible = true;
+      state.nextSearchBlink = now + SearchBlinkInterval;
+    };
+    auto setSearchFocus = [&](bool focused, bool moveCursorToEnd) {
+      if (state.searchFocused == focused && !moveCursorToEnd) {
+        return;
+      }
+      state.searchFocused = focused;
+      if (focused && moveCursorToEnd) {
+        state.searchCursor = static_cast<uint32_t>(state.searchText.size());
+      }
+      if (focused) {
+        resetSearchBlink();
+      } else {
+        state.searchCursorVisible = false;
+        state.nextSearchBlink = {};
+      }
+      markSearchDirty();
+      if (!perfEnabled) {
+        setFramePolicy(focused ? FramePolicy::Continuous : baseFramePolicy);
+      }
+    };
     for (const auto& event : batch.events) {
       if (auto* input = std::get_if<InputEvent>(&event.payload)) {
         if (auto* pointer = std::get_if<PointerEvent>(input)) {
@@ -1253,6 +1380,12 @@ int main(int argc, char** argv) {
           if (pointer->phase == PointerPhase::Down) {
             float px = static_cast<float>(pointer->x);
             float py = static_cast<float>(pointer->y);
+            bool hitSearch = ui.searchFieldNode.isValid() && pointInNode(ui.layout, ui.searchFieldNode, px, py);
+            if (hitSearch) {
+              setSearchFocus(true, true);
+            } else if (state.searchFocused) {
+              setSearchFocus(false, false);
+            }
             if (handleTreeClick(ui, state, px, py)) {
               ui.needsRebuild = true;
               ui.layoutDirty = true;
@@ -1261,56 +1394,123 @@ int main(int argc, char** argv) {
             }
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
-          if (key->pressed && !key->repeat) {
-            if (key->keyCode == KeyEscape) {
-              running = false;
+          if (key->pressed) {
+            if (state.searchFocused) {
+              bool changed = false;
+              uint32_t cursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
+              switch (key->keyCode) {
+                case KeyEscape:
+                  setSearchFocus(false, false);
+                  continue;
+                case KeyLeft:
+                  cursor = utf8Prev(state.searchText, cursor);
+                  break;
+                case KeyRight:
+                  cursor = utf8Next(state.searchText, cursor);
+                  break;
+                case KeyHome:
+                  cursor = 0u;
+                  break;
+                case KeyEnd:
+                  cursor = static_cast<uint32_t>(state.searchText.size());
+                  break;
+                case KeyBackspace:
+                  if (cursor > 0u) {
+                    uint32_t start = utf8Prev(state.searchText, cursor);
+                    state.searchText.erase(start, cursor - start);
+                    cursor = start;
+                    changed = true;
+                  }
+                  break;
+                case KeyDelete:
+                  if (cursor < static_cast<uint32_t>(state.searchText.size())) {
+                    uint32_t end = utf8Next(state.searchText, cursor);
+                    state.searchText.erase(cursor, end - cursor);
+                    changed = true;
+                  }
+                  break;
+                case KeyTab:
+                  setSearchFocus(false, false);
+                  continue;
+                case KeyReturn:
+                  continue;
+                default:
+                  continue;
+              }
+              if (cursor != state.searchCursor || changed) {
+                state.searchCursor = cursor;
+                resetSearchBlink();
+                markSearchDirty();
+              }
+              continue;
             }
-            if (isToggleKey(key->keyCode)) {
-              markRenderDirty();
-            }
-            if (key->keyCode == KeyF) {
-              fullscreen = !fullscreen;
-              hostPtr->setSurfaceFullscreen(surfaceId, fullscreen);
-            } else if (key->keyCode == KeyM) {
-              minimized = !minimized;
-              hostPtr->setSurfaceMinimized(surfaceId, minimized);
-            } else if (key->keyCode == KeyX) {
-              maximized = !maximized;
-              hostPtr->setSurfaceMaximized(surfaceId, maximized);
-            } else if (key->keyCode == KeyR) {
-              relativePointer = !relativePointer;
-              hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
-            } else if (key->keyCode == KeyI) {
-              cursorIBeam = !cursorIBeam;
-              hostPtr->setCursorShape(surfaceId, cursorIBeam ? CursorShape::IBeam : CursorShape::Arrow);
-            } else if (key->keyCode == KeyC) {
-              hostPtr->setClipboardText("PrimeHost clipboard sample");
-            } else if (key->keyCode == KeyV) {
-              auto size = hostPtr->clipboardTextSize();
-              if (size && size.value() > 0u) {
-                std::vector<char> bufferText(size.value());
-                auto text = hostPtr->clipboardText(bufferText);
-                if (text) {
-                  std::cout << "clipboard: " << text.value() << "\n";
+            if (!key->repeat) {
+              if (key->keyCode == KeyEscape) {
+                running = false;
+              }
+              if (isToggleKey(key->keyCode)) {
+                markRenderDirty();
+              }
+              if (key->keyCode == KeyF) {
+                fullscreen = !fullscreen;
+                hostPtr->setSurfaceFullscreen(surfaceId, fullscreen);
+              } else if (key->keyCode == KeyM) {
+                minimized = !minimized;
+                hostPtr->setSurfaceMinimized(surfaceId, minimized);
+              } else if (key->keyCode == KeyX) {
+                maximized = !maximized;
+                hostPtr->setSurfaceMaximized(surfaceId, maximized);
+              } else if (key->keyCode == KeyR) {
+                relativePointer = !relativePointer;
+                hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
+              } else if (key->keyCode == KeyI) {
+                cursorIBeam = !cursorIBeam;
+                hostPtr->setCursorShape(surfaceId, cursorIBeam ? CursorShape::IBeam : CursorShape::Arrow);
+              } else if (key->keyCode == KeyC) {
+                hostPtr->setClipboardText("PrimeHost clipboard sample");
+              } else if (key->keyCode == KeyV) {
+                auto size = hostPtr->clipboardTextSize();
+                if (size && size.value() > 0u) {
+                  std::vector<char> bufferText(size.value());
+                  auto text = hostPtr->clipboardText(bufferText);
+                  if (text) {
+                    std::cout << "clipboard: " << text.value() << "\n";
+                  }
                 }
+              } else if (key->keyCode == KeyO) {
+                FileDialogConfig dialog{};
+                dialog.mode = FileDialogMode::OpenFile;
+                std::array<char, 4096> pathBuffer{};
+                auto result = hostPtr->fileDialog(dialog, pathBuffer);
+                if (result && result->accepted) {
+                  std::cout << "selected: " << result->path << "\n";
+                }
+              } else if (key->keyCode == KeyP) {
+                ScreenshotConfig shot{};
+                shot.scope = ScreenshotScope::Surface;
+                auto status = hostPtr->writeSurfaceScreenshot(surfaceId, "/tmp/primehost-shot.png", shot);
+                std::cout << "screenshot: " << (status ? "ok" : "failed") << "\n";
               }
-            } else if (key->keyCode == KeyO) {
-              FileDialogConfig dialog{};
-              dialog.mode = FileDialogMode::OpenFile;
-              std::array<char, 4096> pathBuffer{};
-              auto result = hostPtr->fileDialog(dialog, pathBuffer);
-              if (result && result->accepted) {
-                std::cout << "selected: " << result->path << "\n";
-              }
-            } else if (key->keyCode == KeyP) {
-              ScreenshotConfig shot{};
-              shot.scope = ScreenshotScope::Surface;
-              auto status = hostPtr->writeSurfaceScreenshot(surfaceId, "/tmp/primehost-shot.png", shot);
-              std::cout << "screenshot: " << (status ? "ok" : "failed") << "\n";
             }
           }
         } else if (auto* text = std::get_if<TextEvent>(input)) {
           auto view = textFromSpan(batch, text->text);
+          if (state.searchFocused && view) {
+            std::string filtered;
+            filtered.reserve(view->size());
+            for (char ch : *view) {
+              if (ch != '\n' && ch != '\r') {
+                filtered.push_back(ch);
+              }
+            }
+            if (!filtered.empty()) {
+              uint32_t cursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
+              state.searchText.insert(cursor, filtered);
+              state.searchCursor = cursor + static_cast<uint32_t>(filtered.size());
+              resetSearchBlink();
+              markSearchDirty();
+            }
+          }
           if (view && !suppressEventLogs) {
             std::cout << "text: " << *view << "\n";
           }
