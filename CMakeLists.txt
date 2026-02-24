@@ -122,12 +122,16 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_clipboard_paths.cpp
     tests/unit/test_clipboard_image.cpp
     tests/unit/test_event_buffer.cpp
+    tests/unit/test_event_payload.cpp
+    tests/unit/test_event_defaults.cpp
     tests/unit/test_screenshot.cpp
     tests/unit/test_app_paths.cpp
     tests/unit/test_file_dialogs.cpp
     tests/unit/test_surface_scale.cpp
     tests/unit/test_surface_constraints.cpp
     tests/unit/test_surface_caps.cpp
+    tests/unit/test_surface_capabilities.cpp
+    tests/unit/test_surface_masks.cpp
     tests/unit/test_displays.cpp
     tests/unit/test_display_hdr.cpp
     tests/unit/test_surface_display.cpp
@@ -137,8 +141,10 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_drop_event.cpp
     tests/unit/test_focus_event.cpp
     tests/unit/test_lifecycle_events.cpp
+    tests/unit/test_host_types.cpp
     tests/unit/test_window_icon.cpp
     tests/unit/test_timing.cpp
+    tests/unit/test_timing_helpers.cpp
     tests/unit/test_log_callback.cpp
     tests/unit/test_headless_surface.cpp
     tests/unit/test_frame_config_validation.cpp
@@ -147,8 +153,10 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_frame_config_query.cpp
     tests/unit/test_frame_config_util.cpp
     tests/unit/test_frame_diagnostics.cpp
+    tests/unit/test_frame_timing.cpp
     tests/unit/test_frame_limiter.cpp
     tests/unit/test_framebuffer.cpp
+    tests/unit/test_input_event.cpp
     tests/unit/test_input_frame.mm
     tests/unit/test_resize_frame.cpp
     tests/unit/test_host_limiter_timer.cpp
