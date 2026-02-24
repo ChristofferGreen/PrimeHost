@@ -172,6 +172,7 @@ struct DemoState {
   std::string searchText;
   uint32_t searchCursor = 0u;
   bool searchFocused = false;
+  bool searchHover = false;
   bool searchCursorVisible = false;
   std::chrono::steady_clock::time_point nextSearchBlink{};
 };
@@ -516,6 +517,39 @@ uint32_t utf8Next(std::string_view text, uint32_t index) {
     ++i;
   }
   return i;
+}
+
+uint32_t caretIndexForClick(PrimeFrame::Frame& frame,
+                            std::string_view text,
+                            PrimeFrame::TextStyleToken style,
+                            float paddingX,
+                            float localX) {
+  if (text.empty()) {
+    return 0u;
+  }
+  float targetX = localX - paddingX;
+  if (targetX <= 0.0f) {
+    return 0u;
+  }
+  float totalWidth = PrimeStage::measureTextWidth(frame, style, text);
+  if (targetX >= totalWidth) {
+    return static_cast<uint32_t>(text.size());
+  }
+  uint32_t prevIndex = 0u;
+  float prevWidth = 0.0f;
+  uint32_t index = utf8Next(text, 0u);
+  while (index <= text.size()) {
+    float width = PrimeStage::measureTextWidth(frame, style, text.substr(0, index));
+    if (width >= targetX) {
+      float prevDist = targetX - prevWidth;
+      float nextDist = width - targetX;
+      return (prevDist <= nextDist) ? prevIndex : index;
+    }
+    prevIndex = index;
+    prevWidth = width;
+    index = utf8Next(text, index);
+  }
+  return static_cast<uint32_t>(text.size());
 }
 
 void buildStudioUi(DemoUi& ui, DemoState& state) {
@@ -1330,22 +1364,26 @@ int main(int argc, char** argv) {
       state.searchCursorVisible = true;
       state.nextSearchBlink = now + SearchBlinkInterval;
     };
-    auto setSearchFocus = [&](bool focused, bool moveCursorToEnd) {
-      if (state.searchFocused == focused && !moveCursorToEnd) {
+    auto setSearchFocus = [&](bool focused, std::optional<uint32_t> cursorOverride) {
+      bool focusChanged = state.searchFocused != focused;
+      if (!focusChanged && !cursorOverride.has_value()) {
         return;
       }
       state.searchFocused = focused;
-      if (focused && moveCursorToEnd) {
-        state.searchCursor = static_cast<uint32_t>(state.searchText.size());
-      }
       if (focused) {
+        if (cursorOverride.has_value()) {
+          state.searchCursor = std::min(cursorOverride.value(),
+                                        static_cast<uint32_t>(state.searchText.size()));
+        } else if (focusChanged) {
+          state.searchCursor = static_cast<uint32_t>(state.searchText.size());
+        }
         resetSearchBlink();
       } else {
         state.searchCursorVisible = false;
         state.nextSearchBlink = {};
       }
       markSearchDirty();
-      if (!perfEnabled) {
+      if (focusChanged && !perfEnabled) {
         setFramePolicy(focused ? FramePolicy::Continuous : baseFramePolicy);
       }
     };
@@ -1377,14 +1415,33 @@ int main(int argc, char** argv) {
             markRenderDirty();
           }
 
+          bool hitSearch = false;
+          if (pointer->phase == PointerPhase::Move ||
+              pointer->phase == PointerPhase::Down ||
+              pointer->phase == PointerPhase::Up) {
+            float px = static_cast<float>(pointer->x);
+            float py = static_cast<float>(pointer->y);
+            hitSearch = ui.searchFieldNode.isValid() && pointInNode(ui.layout, ui.searchFieldNode, px, py);
+            if (hitSearch != state.searchHover) {
+              state.searchHover = hitSearch;
+              bool useIBeam = hitSearch || cursorIBeam;
+              hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
+            }
+          }
           if (pointer->phase == PointerPhase::Down) {
             float px = static_cast<float>(pointer->x);
             float py = static_cast<float>(pointer->y);
-            bool hitSearch = ui.searchFieldNode.isValid() && pointInNode(ui.layout, ui.searchFieldNode, px, py);
             if (hitSearch) {
-              setSearchFocus(true, true);
+              const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
+              float localX = searchOut ? (px - searchOut->absX) : 0.0f;
+              uint32_t cursorIndex = caretIndexForClick(ui.frame,
+                                                        state.searchText,
+                                                        textToken(TextRole::BodyBright),
+                                                        16.0f,
+                                                        localX);
+              setSearchFocus(true, cursorIndex);
             } else if (state.searchFocused) {
-              setSearchFocus(false, false);
+              setSearchFocus(false, std::nullopt);
             }
             if (handleTreeClick(ui, state, px, py)) {
               ui.needsRebuild = true;
@@ -1400,7 +1457,7 @@ int main(int argc, char** argv) {
               uint32_t cursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
               switch (key->keyCode) {
                 case KeyEscape:
-                  setSearchFocus(false, false);
+                  setSearchFocus(false, std::nullopt);
                   continue;
                 case KeyLeft:
                   cursor = utf8Prev(state.searchText, cursor);
@@ -1430,7 +1487,7 @@ int main(int argc, char** argv) {
                   }
                   break;
                 case KeyTab:
-                  setSearchFocus(false, false);
+                  setSearchFocus(false, std::nullopt);
                   continue;
                 case KeyReturn:
                   continue;
@@ -1465,7 +1522,8 @@ int main(int argc, char** argv) {
                 hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
               } else if (key->keyCode == KeyI) {
                 cursorIBeam = !cursorIBeam;
-                hostPtr->setCursorShape(surfaceId, cursorIBeam ? CursorShape::IBeam : CursorShape::Arrow);
+                bool useIBeam = cursorIBeam || state.searchHover;
+                hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
               } else if (key->keyCode == KeyC) {
                 hostPtr->setClipboardText("PrimeHost clipboard sample");
               } else if (key->keyCode == KeyV) {
