@@ -18,6 +18,7 @@
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -146,23 +147,21 @@ struct DemoUi {
   PrimeFrame::LayoutEngine layoutEngine;
   PrimeFrame::LayoutOutput layout;
   PrimeFrame::EventRouter router;
+  PrimeFrame::FocusManager focus;
   PrimeFrame::NodeId treeViewNode{};
   PrimeFrame::NodeId searchFieldNode{};
   PrimeFrame::NodeId boardTextNode{};
-  PrimeStage::TreeViewSpec treeViewSpec{};
   PrimeStage::TextSelectionLayout boardTextLayout{};
-  struct TreeRowRef {
-    PrimeStage::TreeNode* node = nullptr;
-    int depth = 0;
-    bool hasChildren = false;
-  };
-  std::vector<TreeRowRef> treeRows;
+  float cursorX = 0.0f;
+  float cursorY = 0.0f;
   float logicalWidth = 0.0f;
   float logicalHeight = 0.0f;
   float scale = 1.0f;
+  float scrollLineHeight = 24.0f;
   bool needsRebuild = true;
   bool layoutDirty = true;
   bool renderDirty = true;
+  bool pendingTreeFocus = false;
   PrimeFrame::NodeId fpsNode{};
   PrimeFrame::NodeId opacityValueNode{};
   std::chrono::steady_clock::time_point lastResizeEvent{};
@@ -193,6 +192,7 @@ struct DemoState {
   uint32_t boardSelectionStart = 0u;
   uint32_t boardSelectionEnd = 0u;
   int boardPointerId = -1;
+  float treeScrollProgress = 0.0f;
 };
 
 void updateOpacityLabel(DemoState& state) {
@@ -211,7 +211,12 @@ void ensureTreeState(DemoState& state) {
               PrimeStage::TreeNode{"World",
                                    {PrimeStage::TreeNode{"Camera"},
                                     PrimeStage::TreeNode{"Lights"},
-                                    PrimeStage::TreeNode{"Environment"}},
+                                    PrimeStage::TreeNode{"Environment"},
+                                    PrimeStage::TreeNode{"Weather"},
+                                    PrimeStage::TreeNode{"Sky"},
+                                    PrimeStage::TreeNode{"Terrain"},
+                                    PrimeStage::TreeNode{"Audio"},
+                                    PrimeStage::TreeNode{"AI"}},
                                    true,
                                    false},
               PrimeStage::TreeNode{"UI",
@@ -219,9 +224,49 @@ void ensureTreeState(DemoState& state) {
                                     PrimeStage::TreeNode{"Toolbar", {PrimeStage::TreeNode{"Buttons"}}, false, false},
                                     PrimeStage::TreeNode{"Panels",
                                                          {PrimeStage::TreeNode{"TreeView", {}, true, true},
-                                                          PrimeStage::TreeNode{"Rows"}},
+                                                          PrimeStage::TreeNode{"Rows"},
+                                                          PrimeStage::TreeNode{"Headers"},
+                                                          PrimeStage::TreeNode{"Footers"}},
                                                          true,
-                                                         false}},
+                                                         false},
+                                    PrimeStage::TreeNode{"Dialogs",
+                                                         {PrimeStage::TreeNode{"Alerts"},
+                                                          PrimeStage::TreeNode{"Modals"},
+                                                          PrimeStage::TreeNode{"Sheets"}},
+                                                         true,
+                                                         false},
+                                    PrimeStage::TreeNode{"Inspector"},
+                                    PrimeStage::TreeNode{"StatusBar"}},
+                                   true,
+                                   false},
+              PrimeStage::TreeNode{"Gameplay",
+                                   {PrimeStage::TreeNode{"Player"},
+                                    PrimeStage::TreeNode{"Enemies",
+                                                         {PrimeStage::TreeNode{"Grunt"},
+                                                          PrimeStage::TreeNode{"Boss"}},
+                                                         true,
+                                                         false},
+                                    PrimeStage::TreeNode{"Items"},
+                                    PrimeStage::TreeNode{"Triggers"}},
+                                   true,
+                                   false},
+              PrimeStage::TreeNode{"Effects",
+                                   {PrimeStage::TreeNode{"Particles"},
+                                    PrimeStage::TreeNode{"PostProcess"},
+                                    PrimeStage::TreeNode{"Shadows"},
+                                    PrimeStage::TreeNode{"Reflections"}},
+                                   true,
+                                   false},
+              PrimeStage::TreeNode{"Audio",
+                                   {PrimeStage::TreeNode{"Ambience"},
+                                    PrimeStage::TreeNode{"SFX"},
+                                    PrimeStage::TreeNode{"Music"}},
+                                   true,
+                                   false},
+              PrimeStage::TreeNode{"Networking",
+                                   {PrimeStage::TreeNode{"Sessions"},
+                                    PrimeStage::TreeNode{"Replication"},
+                                    PrimeStage::TreeNode{"Latency"}},
                                    true,
                                    false}},
           true,
@@ -237,19 +282,44 @@ void clearTreeSelection(std::vector<PrimeStage::TreeNode>& nodes) {
   }
 }
 
-void flattenTree(std::vector<PrimeStage::TreeNode>& nodes,
-                 int depth,
-                 std::vector<DemoUi::TreeRowRef>& out) {
-  for (auto& node : nodes) {
-    DemoUi::TreeRowRef row;
-    row.node = &node;
-    row.depth = depth;
-    row.hasChildren = !node.children.empty();
-    out.push_back(row);
-    if (node.expanded && !node.children.empty()) {
-      flattenTree(node.children, depth + 1, out);
-    }
+PrimeStage::TreeNode* treeNodeForPath(std::vector<PrimeStage::TreeNode>& nodes,
+                                      std::span<const uint32_t> path) {
+  if (path.empty()) {
+    return nullptr;
   }
+  PrimeStage::TreeNode* current = nullptr;
+  auto* list = &nodes;
+  for (uint32_t index : path) {
+    if (index >= list->size()) {
+      return nullptr;
+    }
+    current = &(*list)[index];
+    list = &current->children;
+  }
+  return current;
+}
+
+bool setTreeSelectionByPath(DemoState& state, std::span<const uint32_t> path) {
+  PrimeStage::TreeNode* node = treeNodeForPath(state.treeNodes, path);
+  if (!node) {
+    return false;
+  }
+  bool changed = !node->selected;
+  clearTreeSelection(state.treeNodes);
+  node->selected = true;
+  return changed;
+}
+
+bool setTreeExpandedByPath(DemoState& state, std::span<const uint32_t> path, bool expanded) {
+  PrimeStage::TreeNode* node = treeNodeForPath(state.treeNodes, path);
+  if (!node) {
+    return false;
+  }
+  if (node->expanded == expanded) {
+    return false;
+  }
+  node->expanded = expanded;
+  return true;
 }
 
 enum class PerfMode {
@@ -452,60 +522,6 @@ bool pointInNode(const PrimeFrame::LayoutOutput& layout, PrimeFrame::NodeId node
   return x >= out->absX && y >= out->absY && x <= (out->absX + out->absW) && y <= (out->absY + out->absH);
 }
 
-bool handleTreeClick(DemoUi& ui, DemoState& state, float px, float py) {
-  if (!ui.treeViewNode.isValid() || ui.treeRows.empty()) {
-    return false;
-  }
-  const PrimeFrame::LayoutOut* treeOut = ui.layout.get(ui.treeViewNode);
-  if (!treeOut || !treeOut->visible) {
-    return false;
-  }
-  if (px < treeOut->absX || px > treeOut->absX + treeOut->absW ||
-      py < treeOut->absY || py > treeOut->absY + treeOut->absH) {
-    return false;
-  }
-  const PrimeStage::TreeViewSpec& spec = ui.treeViewSpec;
-  float localX = px - treeOut->absX;
-  float localY = py - treeOut->absY;
-  float rowSpan = spec.rowHeight + spec.rowGap;
-  if (rowSpan <= 0.0f) {
-    return false;
-  }
-  float rowY = localY - spec.rowStartY;
-  if (rowY < 0.0f) {
-    return false;
-  }
-  int index = static_cast<int>(rowY / rowSpan);
-  if (index < 0 || index >= static_cast<int>(ui.treeRows.size())) {
-    return false;
-  }
-  float withinRow = rowY - static_cast<float>(index) * rowSpan;
-  if (withinRow > spec.rowHeight) {
-    return false;
-  }
-  auto& row = ui.treeRows[static_cast<size_t>(index)];
-  if (!row.node) {
-    return false;
-  }
-  float indent = row.depth > 0 ? spec.indent * static_cast<float>(row.depth) : 0.0f;
-  float glyphX = spec.caretBaseX + indent;
-  float glyphY = spec.rowStartY + static_cast<float>(index) * rowSpan +
-                 (spec.rowHeight - spec.caretSize) * 0.5f;
-  bool onCaret = row.hasChildren &&
-                 localX >= glyphX && localX <= glyphX + spec.caretSize &&
-                 localY >= glyphY && localY <= glyphY + spec.caretSize;
-  if (onCaret) {
-    row.node->expanded = !row.node->expanded;
-    return true;
-  }
-  if (!row.node->selected) {
-    clearTreeSelection(state.treeNodes);
-    row.node->selected = true;
-    return true;
-  }
-  return false;
-}
-
 bool hasSearchSelection(const DemoState& state, uint32_t& start, uint32_t& end) {
   start = std::min(state.searchSelectionStart, state.searchSelectionEnd);
   end = std::max(state.searchSelectionStart, state.searchSelectionEnd);
@@ -542,7 +558,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.searchFieldNode = PrimeFrame::NodeId{};
   ui.boardTextNode = PrimeFrame::NodeId{};
   ui.boardTextLayout = {};
-  ui.treeRows.clear();
+  ui.focus = PrimeFrame::FocusManager{};
   ensureTreeState(state);
   updateOpacityLabel(state);
   state.searchCursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
@@ -699,7 +715,8 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     treeSpec.base.rowStartX = 12.0f;
     treeSpec.base.rowStartY = 4.0f;
     treeSpec.base.headerDividerY = 0.0f;
-    treeSpec.base.rowWidthInset = 28.0f;
+    treeSpec.base.scrollBar.inset = treeSpec.base.scrollBar.width;
+    treeSpec.base.rowWidthInset = treeSpec.base.scrollBar.inset + treeSpec.base.scrollBar.width;
     treeSpec.base.rowHeight = 24.0f;
     treeSpec.base.rowGap = 2.0f;
     treeSpec.base.indent = 14.0f;
@@ -711,24 +728,44 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     treeSpec.base.connectorThickness = 2.0f;
     treeSpec.base.linkEndInset = 0.0f;
     treeSpec.base.selectionAccentWidth = 2.0f;
+    treeSpec.base.scrollBar.thumbProgress = state.treeScrollProgress;
+    treeSpec.base.scrollBar.trackHoverOpacity = 0.7f;
+    treeSpec.base.scrollBar.thumbHoverOpacity = 0.9f;
     treeSpec.rowRole = RectRole::PanelAlt;
     treeSpec.rowAltRole = RectRole::Panel;
+    treeSpec.hoverRole = RectRole::PanelStrong;
     treeSpec.caretBackgroundRole = RectRole::PanelStrong;
     treeSpec.caretLineRole = RectRole::Accent;
     treeSpec.connectorRole = RectRole::Accent;
     treeSpec.textRole = TextRole::SmallBright;
     treeSpec.selectedTextRole = TextRole::SmallBright;
+    ui.scrollLineHeight = treeSpec.base.rowHeight;
     float treePanelHeight = contentH - StudioDefaults::HeaderHeight * 2.0f -
                             StudioDefaults::PanelInset * 4.0f;
     treeSpec.base.size.preferredWidth = sidebarW - StudioDefaults::PanelInset * 2.0f;
     treeSpec.base.size.preferredHeight = std::max(0.0f, treePanelHeight);
+    treeSpec.base.callbacks.onSelectionChanged = [&](const PrimeStage::TreeViewRowInfo& row) {
+      if (setTreeSelectionByPath(state, row.path)) {
+        ui.renderDirty = true;
+      }
+    };
+    treeSpec.base.callbacks.onExpandedChanged = [&](const PrimeStage::TreeViewRowInfo& row, bool expanded) {
+      if (setTreeExpandedByPath(state, row.path, expanded)) {
+        ui.needsRebuild = true;
+        ui.layoutDirty = true;
+        ui.renderDirty = true;
+        ui.pendingTreeFocus = true;
+      }
+    };
+    treeSpec.base.callbacks.onScrollChanged = [&](const PrimeStage::TreeViewScrollInfo& info) {
+      state.treeScrollProgress = info.progress;
+      ui.layoutDirty = true;
+      ui.renderDirty = true;
+    };
 
     treeSpec.base.nodes = state.treeNodes;
     UiNode treeView = createTreeView(treePanel, treeSpec);
     ui.treeViewNode = treeView.nodeId();
-    ui.treeViewSpec = treeSpec.base;
-    ui.treeRows.clear();
-    flattenTree(state.treeNodes, 0, ui.treeRows);
   };
 
   auto createContent = [&]() {
@@ -1124,6 +1161,14 @@ PrimeFrame::Event toPrimeFrameEvent(const PointerEvent& event) {
   return out;
 }
 
+PrimeFrame::Event toPrimeFrameEvent(const KeyEvent& event) {
+  PrimeFrame::Event out;
+  out.type = event.pressed ? PrimeFrame::EventType::KeyDown : PrimeFrame::EventType::KeyUp;
+  out.key = static_cast<int>(event.keyCode);
+  out.modifiers = static_cast<uint32_t>(event.modifiers);
+  return out;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1315,6 +1360,17 @@ int main(int argc, char** argv) {
       ui.layoutDirty = false;
     }
 
+    if (ui.pendingTreeFocus) {
+      ui.pendingTreeFocus = false;
+      if (ui.treeViewNode.isValid()) {
+        auto roots = ui.frame.roots();
+        if (!roots.empty()) {
+          ui.focus.setActiveRoot(ui.frame, ui.layout, roots.back());
+        }
+        ui.focus.setFocus(ui.frame, ui.layout, ui.treeViewNode);
+      }
+    }
+
     if (reportFps) {
       if (ui.fpsNode.isValid()) {
         char buffer[32];
@@ -1449,6 +1505,8 @@ int main(int argc, char** argv) {
     for (const auto& event : batch.events) {
       if (auto* input = std::get_if<InputEvent>(&event.payload)) {
         if (auto* pointer = std::get_if<PointerEvent>(input)) {
+          ui.cursorX = static_cast<float>(pointer->x);
+          ui.cursorY = static_cast<float>(pointer->y);
           if (!suppressEventLogs && pointer->phase != PointerPhase::Move) {
             std::cout << "pointer " << pointerPhaseLabel(pointer->phase)
                       << " type=" << pointerTypeLabel(pointer->deviceType)
@@ -1468,7 +1526,7 @@ int main(int argc, char** argv) {
             ui.layoutDirty = false;
           }
           PrimeFrame::Event pfEvent = toPrimeFrameEvent(*pointer);
-          bool handled = ui.router.dispatch(pfEvent, ui.frame, ui.layout, nullptr);
+          bool handled = ui.router.dispatch(pfEvent, ui.frame, ui.layout, &ui.focus);
           if (handled) {
             ui.renderDirty = true;
             markRenderDirty();
@@ -1535,12 +1593,6 @@ int main(int argc, char** argv) {
             } else if (state.boardFocused) {
               setBoardFocus(false, std::nullopt);
             }
-            if (handleTreeClick(ui, state, px, py)) {
-              ui.needsRebuild = true;
-              ui.layoutDirty = true;
-              ui.renderDirty = true;
-              markRenderDirty();
-            }
           } else if (pointer->phase == PointerPhase::Move) {
             if (state.searchSelecting &&
                 state.searchPointerId == static_cast<int>(pointer->pointerId) &&
@@ -1588,6 +1640,26 @@ int main(int argc, char** argv) {
             }
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
+          if (ui.needsRebuild) {
+            buildStudioUi(ui, state);
+            ui.needsRebuild = false;
+            ui.layoutDirty = true;
+            ui.renderDirty = true;
+          }
+          if (ui.layoutDirty) {
+            PrimeFrame::LayoutOptions options;
+            options.rootWidth = ui.logicalWidth;
+            options.rootHeight = ui.logicalHeight;
+            ui.layoutEngine.layout(ui.frame, ui.layout, options);
+            ui.layoutDirty = false;
+          }
+          PrimeFrame::Event keyEvent = toPrimeFrameEvent(*key);
+          bool handled = ui.router.dispatch(keyEvent, ui.frame, ui.layout, &ui.focus);
+          if (handled) {
+            ui.renderDirty = true;
+            markRenderDirty();
+            continue;
+          }
           if (key->pressed) {
             bool altPressed = (key->modifiers &
                                static_cast<KeyModifierMask>(KeyModifier::Alt)) != 0u;
@@ -1877,6 +1949,31 @@ int main(int argc, char** argv) {
           if (!suppressEventLogs) {
             std::cout << "scroll dx=" << scroll->deltaX << " dy=" << scroll->deltaY
                       << (scroll->isLines ? " lines" : " px") << "\n";
+          }
+          if (ui.needsRebuild) {
+            buildStudioUi(ui, state);
+            ui.needsRebuild = false;
+            ui.layoutDirty = true;
+            ui.renderDirty = true;
+          }
+          if (ui.layoutDirty) {
+            PrimeFrame::LayoutOptions options;
+            options.rootWidth = ui.logicalWidth;
+            options.rootHeight = ui.logicalHeight;
+            ui.layoutEngine.layout(ui.frame, ui.layout, options);
+            ui.layoutDirty = false;
+          }
+          PrimeFrame::Event scrollEvent;
+          scrollEvent.type = PrimeFrame::EventType::PointerScroll;
+          scrollEvent.x = ui.cursorX;
+          scrollEvent.y = ui.cursorY;
+          float scale = scroll->isLines ? ui.scrollLineHeight : 1.0f;
+          scrollEvent.scrollX = scroll->deltaX * scale;
+          scrollEvent.scrollY = scroll->deltaY * scale;
+          bool handled = ui.router.dispatch(scrollEvent, ui.frame, ui.layout, &ui.focus);
+          if (handled) {
+            ui.renderDirty = true;
+            markRenderDirty();
           }
         } else if (auto* device = std::get_if<DeviceEvent>(input)) {
           if (!suppressEventLogs) {
