@@ -27,3 +27,6 @@ Defines naming and coding rules plus build/test entrypoints for contributors wor
 - Use `std::chrono` types for durations/timeouts.
 - Keep hot paths allocation-free; reuse buffers and caches where possible.
 - Avoid raw `new`; use `std::unique_ptr` or `std::shared_ptr` with clear ownership intent.
+
+## Collaboration
+- When you make commits or change existing commits, always report the repo(s) and commit hashes in your response.
