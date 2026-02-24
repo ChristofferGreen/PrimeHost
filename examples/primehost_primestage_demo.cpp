@@ -7,11 +7,15 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
 #include <cmath>
+#include <condition_variable>
+#include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -123,39 +127,286 @@ bool isToggleKey(uint32_t keyCode) {
   }
 }
 
-struct ButtonBinding {
-  PrimeFrame::NodeId node{};
-  PrimeFrame::PrimitiveId background = PrimeFrame::InvalidIndex;
-  PrimeFrame::RectStyleToken baseStyle = 0;
-  PrimeFrame::RectStyleToken hoverStyle = 0;
-  PrimeFrame::RectStyleToken activeStyle = 0;
-  bool pressed = false;
-  bool hovered = false;
-  bool* activeFlag = nullptr;
-};
-
 struct DemoUi {
   PrimeFrame::Frame frame;
   PrimeFrame::LayoutEngine layoutEngine;
   PrimeFrame::LayoutOutput layout;
   PrimeFrame::EventRouter router;
-  std::vector<ButtonBinding> buttons;
+  PrimeFrame::NodeId treeViewNode{};
+  PrimeStage::TreeViewSpec treeViewSpec{};
+  struct TreeRowRef {
+    PrimeStage::TreeNode* node = nullptr;
+    int depth = 0;
+    bool hasChildren = false;
+  };
+  std::vector<TreeRowRef> treeRows;
   float logicalWidth = 0.0f;
   float logicalHeight = 0.0f;
   float scale = 1.0f;
   bool needsRebuild = true;
   bool layoutDirty = true;
-  bool styleDirty = true;
+  bool renderDirty = true;
   PrimeFrame::NodeId fpsNode{};
+  PrimeFrame::NodeId opacityValueNode{};
   std::chrono::steady_clock::time_point lastResizeEvent{};
   std::chrono::steady_clock::time_point lastResizeLog{};
+  std::chrono::steady_clock::time_point lastSlowLog{};
 };
 
 struct DemoState {
-  bool shareActive = false;
-  bool runActive = false;
-  bool publishActive = false;
+  std::vector<PrimeStage::TreeNode> treeNodes;
+  float opacity = 0.85f;
+  std::string opacityLabel;
 };
+
+void updateOpacityLabel(DemoState& state) {
+  int percent = static_cast<int>(std::lround(state.opacity * 100.0f));
+  state.opacityLabel = std::to_string(percent) + "%";
+}
+
+void ensureTreeState(DemoState& state) {
+  if (!state.treeNodes.empty()) {
+    return;
+  }
+  state.treeNodes = {
+      PrimeStage::TreeNode{
+          "Root",
+          {
+              PrimeStage::TreeNode{"World",
+                                   {PrimeStage::TreeNode{"Camera"},
+                                    PrimeStage::TreeNode{"Lights"},
+                                    PrimeStage::TreeNode{"Environment"}},
+                                   true,
+                                   false},
+              PrimeStage::TreeNode{"UI",
+                                   {PrimeStage::TreeNode{"Sidebar"},
+                                    PrimeStage::TreeNode{"Toolbar", {PrimeStage::TreeNode{"Buttons"}}, false, false},
+                                    PrimeStage::TreeNode{"Panels",
+                                                         {PrimeStage::TreeNode{"TreeView", {}, true, true},
+                                                          PrimeStage::TreeNode{"Rows"}},
+                                                         true,
+                                                         false}},
+                                   true,
+                                   false}},
+          true,
+          false}};
+}
+
+void clearTreeSelection(std::vector<PrimeStage::TreeNode>& nodes) {
+  for (auto& node : nodes) {
+    node.selected = false;
+    if (!node.children.empty()) {
+      clearTreeSelection(node.children);
+    }
+  }
+}
+
+void flattenTree(std::vector<PrimeStage::TreeNode>& nodes,
+                 int depth,
+                 std::vector<DemoUi::TreeRowRef>& out) {
+  for (auto& node : nodes) {
+    DemoUi::TreeRowRef row;
+    row.node = &node;
+    row.depth = depth;
+    row.hasChildren = !node.children.empty();
+    out.push_back(row);
+    if (node.expanded && !node.children.empty()) {
+      flattenTree(node.children, depth + 1, out);
+    }
+  }
+}
+
+enum class PerfMode {
+  Off,
+  Headless,
+  Windowed,
+};
+
+struct PerfConfig {
+  PerfMode mode = PerfMode::Off;
+  bool headless = false;
+  bool headlessSet = false;
+  uint32_t width = 1280u;
+  uint32_t height = 720u;
+  uint32_t warmupFrames = 30u;
+  uint32_t measureFrames = 120u;
+  uint32_t timeoutMs = 0u;
+  bool resizeStress = false;
+  uint32_t resizeMinW = 960u;
+  uint32_t resizeMinH = 540u;
+  uint32_t resizeMaxW = 1600u;
+  uint32_t resizeMaxH = 900u;
+  uint32_t resizeIntervalMs = 16u;
+  uint32_t resizeSteps = 30u;
+  double minFps = 30.0;
+  double maxP95Ms = 0.0;
+};
+
+struct PerfState {
+  uint32_t presented = 0u;
+  bool done = false;
+  std::mutex mutex;
+  std::condition_variable cv;
+  double resizePhase = 0.0;
+  int resizeDir = 1;
+  std::chrono::steady_clock::time_point lastResize{};
+  uint32_t lastResizeW = 0u;
+  uint32_t lastResizeH = 0u;
+};
+
+bool parseUint(std::string_view value, uint32_t& out) {
+  if (value.empty()) {
+    return false;
+  }
+  uint32_t parsed = 0u;
+  auto result = std::from_chars(value.data(), value.data() + value.size(), parsed);
+  if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+    return false;
+  }
+  out = parsed;
+  return true;
+}
+
+bool parseDouble(std::string_view value, double& out) {
+  if (value.empty()) {
+    return false;
+  }
+  std::string temp(value);
+  char* end = nullptr;
+  double parsed = std::strtod(temp.c_str(), &end);
+  if (!end || *end != '\0') {
+    return false;
+  }
+  out = parsed;
+  return true;
+}
+
+bool parseSize(std::string_view value, uint32_t& outW, uint32_t& outH) {
+  auto pos = value.find('x');
+  if (pos == std::string_view::npos) {
+    return false;
+  }
+  std::string_view w = value.substr(0, pos);
+  std::string_view h = value.substr(pos + 1);
+  return parseUint(w, outW) && parseUint(h, outH);
+}
+
+void printUsage(std::string_view name) {
+  std::cout << "Usage: " << name << " [options]\n"
+            << "  --perf                Run headless perf check and exit\n"
+            << "  --perf-headless       Run headless perf check and exit\n"
+            << "  --perf-windowed       Run windowed perf check and exit\n"
+            << "  --headless            Force headless surface\n"
+            << "  --windowed            Force windowed surface\n"
+            << "  --size WxH            Surface size (default 1280x720)\n"
+            << "  --warmup N            Warmup frames (default 30)\n"
+            << "  --frames N            Measured frames (default 120)\n"
+            << "  --timeout-ms N        Max time to wait (0 = auto)\n"
+            << "  --resize-stress       Animate resize during perf runs\n"
+            << "  --resize-min WxH      Resize min size (default 960x540)\n"
+            << "  --resize-max WxH      Resize max size (default 1600x900)\n"
+            << "  --resize-interval-ms N Resize interval (default 16)\n"
+            << "  --resize-steps N      Steps from min->max (default 30)\n"
+            << "  --min-fps N           Minimum FPS to pass (default 30)\n"
+            << "  --max-p95-ms N        Maximum p95 frame time (0 disables)\n";
+}
+
+bool parseArgs(int argc, char** argv, PerfConfig& perf) {
+  for (int i = 1; i < argc; ++i) {
+    std::string_view arg(argv[i]);
+    if (arg == "--perf" || arg == "--perf-headless") {
+      perf.mode = PerfMode::Headless;
+    } else if (arg == "--perf-windowed") {
+      perf.mode = PerfMode::Windowed;
+    } else if (arg == "--headless") {
+      perf.headless = true;
+      perf.headlessSet = true;
+    } else if (arg == "--windowed") {
+      perf.headless = false;
+      perf.headlessSet = true;
+    } else if (arg == "--size") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseSize(std::string_view(argv[++i]), perf.width, perf.height)) {
+        return false;
+      }
+    } else if (arg == "--warmup") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseUint(std::string_view(argv[++i]), perf.warmupFrames)) {
+        return false;
+      }
+    } else if (arg == "--frames") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseUint(std::string_view(argv[++i]), perf.measureFrames)) {
+        return false;
+      }
+    } else if (arg == "--timeout-ms") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseUint(std::string_view(argv[++i]), perf.timeoutMs)) {
+        return false;
+      }
+    } else if (arg == "--resize-stress") {
+      perf.resizeStress = true;
+    } else if (arg == "--resize-min") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseSize(std::string_view(argv[++i]), perf.resizeMinW, perf.resizeMinH)) {
+        return false;
+      }
+    } else if (arg == "--resize-max") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseSize(std::string_view(argv[++i]), perf.resizeMaxW, perf.resizeMaxH)) {
+        return false;
+      }
+    } else if (arg == "--resize-interval-ms") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseUint(std::string_view(argv[++i]), perf.resizeIntervalMs)) {
+        return false;
+      }
+    } else if (arg == "--resize-steps") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseUint(std::string_view(argv[++i]), perf.resizeSteps)) {
+        return false;
+      }
+    } else if (arg == "--min-fps") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseDouble(std::string_view(argv[++i]), perf.minFps)) {
+        return false;
+      }
+    } else if (arg == "--max-p95-ms") {
+      if (i + 1 >= argc) {
+        return false;
+      }
+      if (!parseDouble(std::string_view(argv[++i]), perf.maxP95Ms)) {
+        return false;
+      }
+    } else if (arg == "--help" || arg == "-h") {
+      printUsage(argv[0]);
+      return false;
+    } else {
+      std::cout << "Unknown option: " << arg << "\n";
+      printUsage(argv[0]);
+      return false;
+    }
+  }
+  return true;
+}
 
 bool pointInNode(const PrimeFrame::LayoutOutput& layout, PrimeFrame::NodeId node, float x, float y) {
   const PrimeFrame::LayoutOut* out = layout.get(node);
@@ -165,83 +416,68 @@ bool pointInNode(const PrimeFrame::LayoutOutput& layout, PrimeFrame::NodeId node
   return x >= out->absX && y >= out->absY && x <= (out->absX + out->absW) && y <= (out->absY + out->absH);
 }
 
-void applyButtonStyles(PrimeFrame::Frame& frame, std::vector<ButtonBinding>& buttons) {
-  for (auto& button : buttons) {
-    auto* prim = frame.getPrimitive(button.background);
-    if (!prim || prim->type != PrimeFrame::PrimitiveType::Rect) {
-      continue;
-    }
-    PrimeFrame::RectStyleToken token = button.baseStyle;
-    if (button.pressed) {
-      token = button.activeStyle;
-    } else if (button.activeFlag && *button.activeFlag) {
-      token = button.activeStyle;
-    } else if (button.hovered) {
-      token = button.hoverStyle;
-    }
-    prim->rect.token = token;
+bool handleTreeClick(DemoUi& ui, DemoState& state, float px, float py) {
+  if (!ui.treeViewNode.isValid() || ui.treeRows.empty()) {
+    return false;
   }
-}
-
-void attachButtonCallback(PrimeFrame::Frame& frame, ButtonBinding& button, bool& styleDirty) {
-  PrimeFrame::Callback cb;
-  cb.onEvent = [&button, &styleDirty](PrimeFrame::Event const& event) {
-    switch (event.type) {
-      case PrimeFrame::EventType::PointerDown:
-        button.pressed = true;
-        styleDirty = true;
-        return true;
-      case PrimeFrame::EventType::PointerUp:
-        if (button.pressed) {
-          button.pressed = false;
-          if (button.activeFlag) {
-            *button.activeFlag = !*button.activeFlag;
-          }
-          styleDirty = true;
-        }
-        return true;
-      case PrimeFrame::EventType::PointerCancel:
-        if (button.pressed) {
-          button.pressed = false;
-          styleDirty = true;
-        }
-        return true;
-      default:
-        return false;
-    }
-  };
-  PrimeFrame::CallbackId cbId = frame.addCallback(cb);
-  if (PrimeFrame::Node* node = frame.getNode(button.node)) {
-    node->callbacks = cbId;
+  const PrimeFrame::LayoutOut* treeOut = ui.layout.get(ui.treeViewNode);
+  if (!treeOut || !treeOut->visible) {
+    return false;
   }
-}
-
-void registerButton(DemoUi& ui,
-                    UiNode const& node,
-                    PrimeFrame::RectStyleToken baseStyle,
-                    PrimeFrame::RectStyleToken hoverStyle,
-                    PrimeFrame::RectStyleToken activeStyle,
-                    bool* activeFlag) {
-  PrimeFrame::Node* frameNode = ui.frame.getNode(node.nodeId());
-  if (!frameNode || frameNode->primitives.empty()) {
-    return;
+  if (px < treeOut->absX || px > treeOut->absX + treeOut->absW ||
+      py < treeOut->absY || py > treeOut->absY + treeOut->absH) {
+    return false;
   }
-
-  ButtonBinding binding;
-  binding.node = node.nodeId();
-  binding.background = frameNode->primitives.front();
-  binding.baseStyle = baseStyle;
-  binding.hoverStyle = hoverStyle;
-  binding.activeStyle = activeStyle;
-  binding.activeFlag = activeFlag;
-  ui.buttons.push_back(binding);
+  const PrimeStage::TreeViewSpec& spec = ui.treeViewSpec;
+  float localX = px - treeOut->absX;
+  float localY = py - treeOut->absY;
+  float rowSpan = spec.rowHeight + spec.rowGap;
+  if (rowSpan <= 0.0f) {
+    return false;
+  }
+  float rowY = localY - spec.rowStartY;
+  if (rowY < 0.0f) {
+    return false;
+  }
+  int index = static_cast<int>(rowY / rowSpan);
+  if (index < 0 || index >= static_cast<int>(ui.treeRows.size())) {
+    return false;
+  }
+  float withinRow = rowY - static_cast<float>(index) * rowSpan;
+  if (withinRow > spec.rowHeight) {
+    return false;
+  }
+  auto& row = ui.treeRows[static_cast<size_t>(index)];
+  if (!row.node) {
+    return false;
+  }
+  float indent = row.depth > 0 ? spec.indent * static_cast<float>(row.depth) : 0.0f;
+  float glyphX = spec.caretBaseX + indent;
+  float glyphY = spec.rowStartY + static_cast<float>(index) * rowSpan +
+                 (spec.rowHeight - spec.caretSize) * 0.5f;
+  bool onCaret = row.hasChildren &&
+                 localX >= glyphX && localX <= glyphX + spec.caretSize &&
+                 localY >= glyphY && localY <= glyphY + spec.caretSize;
+  if (onCaret) {
+    row.node->expanded = !row.node->expanded;
+    return true;
+  }
+  if (!row.node->selected) {
+    clearTreeSelection(state.treeNodes);
+    row.node->selected = true;
+    return true;
+  }
+  return false;
 }
 
 void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.frame = PrimeFrame::Frame{};
-  ui.buttons.clear();
-  ui.buttons.reserve(4);
   ui.fpsNode = PrimeFrame::NodeId{};
+  ui.opacityValueNode = PrimeFrame::NodeId{};
+  ui.treeViewNode = PrimeFrame::NodeId{};
+  ui.treeRows.clear();
+  ensureTreeState(state);
+  updateOpacityLabel(state);
 
   SizeSpec shellSize;
   shellSize.preferredWidth = ui.logicalWidth;
@@ -301,19 +537,6 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
                               "Run",
                               ButtonVariant::Primary,
                               {});
-
-    registerButton(ui,
-                   share,
-                   rectToken(RectRole::Panel),
-                   rectToken(RectRole::PanelStrong),
-                   rectToken(RectRole::Accent),
-                   &state.shareActive);
-    registerButton(ui,
-                   run,
-                   rectToken(RectRole::Accent),
-                   rectToken(RectRole::Selection),
-                   rectToken(RectRole::Selection),
-                   &state.runActive);
   };
 
   auto createSidebar = [&]() {
@@ -390,30 +613,12 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     treeSpec.base.size.preferredWidth = sidebarW - StudioDefaults::PanelInset * 2.0f;
     treeSpec.base.size.preferredHeight = std::max(0.0f, treePanelHeight);
 
-    Studio::TreeNode treeRoot{
-        "Root",
-        {
-            Studio::TreeNode{"World",
-                     {Studio::TreeNode{"Camera"}, Studio::TreeNode{"Lights"}, Studio::TreeNode{"Environment"}},
-                     true,
-                     false},
-            Studio::TreeNode{"UI",
-                     {
-                         Studio::TreeNode{"Sidebar"},
-                         Studio::TreeNode{"Toolbar", {Studio::TreeNode{"Buttons"}}, false, false},
-                         Studio::TreeNode{"Panels",
-                                  {Studio::TreeNode{"TreeView", {}, true, true}, Studio::TreeNode{"Rows"}},
-                                  true,
-                                  false}
-                     },
-                     true,
-                     false}
-        },
-        true,
-        false};
-
-    treeSpec.base.nodes = {treeRoot};
-    createTreeView(treePanel, treeSpec);
+    treeSpec.base.nodes = state.treeNodes;
+    UiNode treeView = createTreeView(treePanel, treeSpec);
+    ui.treeViewNode = treeView.nodeId();
+    ui.treeViewSpec = treeSpec.base;
+    ui.treeRows.clear();
+    flattenTree(state.treeNodes, 0, ui.treeRows);
   };
 
   auto createContent = [&]() {
@@ -473,7 +678,10 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     SizeSpec buttonSpacer;
     buttonSpacer.stretchX = 1.0f;
     boardButtons.createSpacer(buttonSpacer);
-    createButton(boardButtons, "Primary Action", ButtonVariant::Primary, {});
+    SizeSpec primarySize;
+    primarySize.preferredWidth = StudioDefaults::ControlWidthL;
+    primarySize.preferredHeight = StudioDefaults::ControlHeight;
+    createButton(boardButtons, "Primary Action", ButtonVariant::Default, primarySize);
 
     SizeSpec highlightSize;
     highlightSize.preferredWidth = sectionWidth;
@@ -644,17 +852,57 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     SizeSpec opacityBarSize;
     opacityBarSize.preferredWidth = transformContentW;
     opacityBarSize.preferredHeight = StudioDefaults::OpacityBarHeight;
-    createProgressBar(opacityOverlay, opacityBarSize, 0.85f);
+    SliderSpec opacitySlider;
+    opacitySlider.size = opacityBarSize;
+    opacitySlider.value = state.opacity;
+    opacitySlider.trackThickness = StudioDefaults::OpacityBarHeight;
+    opacitySlider.thumbSize = 0.0f;
+    opacitySlider.trackStyle = rectToken(RectRole::PanelStrong);
+    opacitySlider.fillStyle = rectToken(RectRole::Accent);
+    opacitySlider.thumbStyle = rectToken(RectRole::PanelAlt);
+    opacitySlider.trackStyleOverride.opacity = 0.55f;
+    opacitySlider.trackHoverOpacity = 0.65f;
+    opacitySlider.trackPressedOpacity = 0.6f;
+    opacitySlider.fillStyleOverride.opacity = 0.8f;
+    opacitySlider.fillHoverOpacity = 1.0f;
+    opacitySlider.fillPressedOpacity = 0.9f;
+    opacitySlider.thumbStyleOverride.opacity = 0.0f;
+    DemoUi* uiPtr = &ui;
+    DemoState* statePtr = &state;
+    opacitySlider.callbacks.onValueChanged = [uiPtr, statePtr](float next) {
+      if (std::abs(statePtr->opacity - next) < 0.001f) {
+        return;
+      }
+      statePtr->opacity = next;
+      updateOpacityLabel(*statePtr);
+      if (uiPtr->opacityValueNode.isValid()) {
+        if (auto* node = uiPtr->frame.getNode(uiPtr->opacityValueNode)) {
+          if (!node->primitives.empty()) {
+            if (auto* prim = uiPtr->frame.getPrimitive(node->primitives.front())) {
+              if (prim->type == PrimeFrame::PrimitiveType::Text) {
+                prim->textBlock.text = statePtr->opacityLabel;
+              }
+            }
+          }
+        }
+      }
+    };
+    opacityOverlay.createSlider(opacitySlider);
 
-    PropertyListSpec opacitySpec;
-    opacitySpec.size.preferredWidth = transformContentW;
-    opacitySpec.size.preferredHeight = StudioDefaults::OpacityBarHeight;
-    opacitySpec.rowHeight = StudioDefaults::OpacityBarHeight;
-    opacitySpec.rowGap = 0.0f;
-    opacitySpec.labelRole = TextRole::SmallBright;
-    opacitySpec.valueRole = TextRole::SmallBright;
-    opacitySpec.rows = {{"Opacity", "85%"}};
-    createPropertyList(opacityOverlay, opacitySpec);
+    SizeSpec opacityLabelSize;
+    opacityLabelSize.preferredWidth = transformContentW;
+    opacityLabelSize.preferredHeight = StudioDefaults::OpacityBarHeight;
+    createTextLine(opacityOverlay,
+                   "Opacity",
+                   TextRole::SmallBright,
+                   opacityLabelSize,
+                   PrimeFrame::TextAlign::Start);
+    UiNode opacityValue = createTextLine(opacityOverlay,
+                                         state.opacityLabel,
+                                         TextRole::SmallBright,
+                                         opacityLabelSize,
+                                         PrimeFrame::TextAlign::End);
+    ui.opacityValueNode = opacityValue.nodeId();
 
     SizeSpec footerSpacer;
     footerSpacer.stretchY = 1.0f;
@@ -667,13 +915,6 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
                                   "Publish",
                                   ButtonVariant::Primary,
                                   publishSize);
-
-    registerButton(ui,
-                   publish,
-                   rectToken(RectRole::Accent),
-                   rectToken(RectRole::Selection),
-                   rectToken(RectRole::Selection),
-                   &state.publishActive);
   };
 
   auto createStatus = [&]() {
@@ -713,10 +954,6 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   createInspector();
   createStatus();
 
-  for (auto& button : ui.buttons) {
-    attachButtonCallback(ui.frame, button, ui.styleDirty);
-  }
-
   if (ui.fpsNode.isValid()) {
     auto* node = ui.frame.getNode(ui.fpsNode);
     if (node && !node->primitives.empty()) {
@@ -752,7 +989,19 @@ PrimeFrame::Event toPrimeFrameEvent(const PointerEvent& event) {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  PerfConfig perf{};
+  if (!parseArgs(argc, argv, perf)) {
+    return 2;
+  }
+  bool perfEnabled = perf.mode != PerfMode::Off;
+  if (perf.resizeSteps == 0u) {
+    perf.resizeSteps = 1u;
+  }
+  if (perf.resizeIntervalMs == 0u) {
+    perf.resizeIntervalMs = 16u;
+  }
+
   std::cout << "PrimeHost v" << PrimeHostVersion << " PrimeStage demo" << std::endl;
 
   auto hostResult = createHost();
@@ -777,10 +1026,16 @@ int main() {
   }
 
   SurfaceConfig config{};
-  config.width = 1280u;
-  config.height = 720u;
+  config.width = perf.width;
+  config.height = perf.height;
   config.resizable = true;
-  config.title = std::string("PrimeHost Studio Demo");
+  if (perfEnabled && !perf.headlessSet) {
+    perf.headless = (perf.mode == PerfMode::Headless);
+  }
+  config.headless = perf.headless;
+  if (!config.headless) {
+    config.title = std::string("PrimeHost Studio Demo");
+  }
 
   auto surfaceResult = host->createSurface(config);
   if (!surfaceResult) {
@@ -790,7 +1045,11 @@ int main() {
   SurfaceId surfaceId = surfaceResult.value();
 
   FrameConfig frameConfig{};
-  frameConfig.framePolicy = FramePolicy::Continuous;
+  if (perf.mode == PerfMode::Windowed) {
+    frameConfig.framePolicy = FramePolicy::Continuous;
+  } else {
+    frameConfig.framePolicy = FramePolicy::EventDriven;
+  }
   frameConfig.framePacingSource = FramePacingSource::Platform;
   host->setFrameConfig(surfaceId, frameConfig);
 
@@ -816,18 +1075,39 @@ int main() {
   ui.scale = 1.0f;
 
   FpsTracker fps{};
+  PerfState perfState{};
   bool running = true;
   bool fullscreen = false;
   bool minimized = false;
   bool maximized = false;
   bool relativePointer = false;
   bool cursorIBeam = false;
+  bool suppressEventLogs = perfEnabled;
 
   Host* hostPtr = host.get();
+  auto markRenderDirty = [&]() {
+    ui.renderDirty = true;
+  };
   Callbacks callbacks{};
   callbacks.onFrame = [&](SurfaceId id, const FrameTiming&, const FrameDiagnostics&) {
     auto now = std::chrono::steady_clock::now();
+    bool reportFps = !perfEnabled && fps.shouldReport() && fps.sampleCount() > 0u;
+    FpsStats fpsStats{};
+    if (reportFps) {
+      fpsStats = fps.stats();
+    }
+
+    if (perfEnabled) {
+      ui.renderDirty = true;
+    }
+    bool needsRender = ui.renderDirty || ui.needsRebuild || ui.layoutDirty || reportFps;
+    if (!needsRender) {
+      return;
+    }
+
+    auto acquireStart = std::chrono::steady_clock::now();
     auto frameResult = host->acquireFrameBuffer(id);
+    auto acquireEnd = std::chrono::steady_clock::now();
     if (!frameResult) {
       return;
     }
@@ -839,7 +1119,9 @@ int main() {
       ui.logicalWidth = logicalW;
       ui.logicalHeight = logicalH;
       ui.scale = scale;
+      ui.needsRebuild = true;
       ui.layoutDirty = true;
+      ui.renderDirty = true;
     }
 
     if (ui.needsRebuild) {
@@ -847,20 +1129,42 @@ int main() {
       buildStudioUi(ui, state);
       ui.needsRebuild = false;
       ui.layoutDirty = true;
-      ui.styleDirty = true;
     }
 
     if (ui.layoutDirty) {
+      auto layoutStart = std::chrono::steady_clock::now();
       PrimeFrame::LayoutOptions options;
       options.rootWidth = ui.logicalWidth;
       options.rootHeight = ui.logicalHeight;
       ui.layoutEngine.layout(ui.frame, ui.layout, options);
+      auto layoutEnd = std::chrono::steady_clock::now();
+      if (perfEnabled && perf.resizeStress) {
+        auto layoutMs = std::chrono::duration<double, std::milli>(layoutEnd - layoutStart).count();
+        if (layoutMs > 100.0 &&
+            (ui.lastSlowLog.time_since_epoch().count() == 0 ||
+             now - ui.lastSlowLog > std::chrono::milliseconds(500))) {
+          std::cout << "slow layout " << layoutMs << "ms\n";
+          ui.lastSlowLog = now;
+        }
+      }
       ui.layoutDirty = false;
     }
 
-    if (ui.styleDirty) {
-      applyButtonStyles(ui.frame, ui.buttons);
-      ui.styleDirty = false;
+    if (reportFps) {
+      if (ui.fpsNode.isValid()) {
+        char buffer[32];
+        std::snprintf(buffer, sizeof(buffer), "FPS %.0f", fpsStats.fps);
+        auto* node = ui.frame.getNode(ui.fpsNode);
+        if (node && !node->primitives.empty()) {
+          auto* prim = ui.frame.getPrimitive(node->primitives.front());
+          if (prim && prim->type == PrimeFrame::PrimitiveType::Text) {
+            if (prim->textBlock.text != buffer) {
+              prim->textBlock.text.assign(buffer);
+              ui.renderDirty = true;
+            }
+          }
+        }
+      }
     }
 
     PrimeStage::RenderTarget target;
@@ -869,25 +1173,50 @@ int main() {
     target.height = fb.size.height;
     target.stride = fb.stride;
     target.scale = scale;
-    if (renderFrameToTarget(ui.frame, ui.layout, target)) {
+    auto renderStart = std::chrono::steady_clock::now();
+    bool rendered = renderFrameToTarget(ui.frame, ui.layout, target);
+    auto renderEnd = std::chrono::steady_clock::now();
+    if (rendered) {
+      auto presentStart = std::chrono::steady_clock::now();
       host->presentFrameBuffer(id, fb);
-      fps.framePresented();
-      if (fps.shouldReport() && fps.sampleCount() > 0u) {
-        auto stats = fps.stats();
-        if (ui.fpsNode.isValid()) {
-          char buffer[32];
-          std::snprintf(buffer, sizeof(buffer), "FPS %.0f", stats.fps);
-          auto* node = ui.frame.getNode(ui.fpsNode);
-          if (node && !node->primitives.empty()) {
-            auto* prim = ui.frame.getPrimitive(node->primitives.front());
-            if (prim && prim->type == PrimeFrame::PrimitiveType::Text) {
-              prim->textBlock.text.assign(buffer);
+      auto presentEnd = std::chrono::steady_clock::now();
+      if (perfEnabled && perf.resizeStress) {
+        auto acquireMs = std::chrono::duration<double, std::milli>(acquireEnd - acquireStart).count();
+        auto renderMs = std::chrono::duration<double, std::milli>(renderEnd - renderStart).count();
+        auto presentMs = std::chrono::duration<double, std::milli>(presentEnd - presentStart).count();
+        if ((acquireMs > 100.0 || renderMs > 100.0 || presentMs > 100.0) &&
+            (ui.lastSlowLog.time_since_epoch().count() == 0 ||
+             now - ui.lastSlowLog > std::chrono::milliseconds(500))) {
+          std::cout << "slow frame acquire=" << acquireMs
+                    << "ms render=" << renderMs
+                    << "ms present=" << presentMs
+                    << "ms size=" << fb.size.width << "x" << fb.size.height
+                    << "\n";
+          ui.lastSlowLog = now;
+        }
+      }
+      if (perfEnabled) {
+        {
+          std::lock_guard<std::mutex> lock(perfState.mutex);
+          if (!perfState.done) {
+            if (perfState.presented == perf.warmupFrames) {
+              fps.reset();
             }
+            if (perfState.presented >= perf.warmupFrames) {
+              fps.framePresented();
+            }
+            perfState.presented++;
+            perfState.cv.notify_one();
           }
         }
-        std::cout << "fps " << stats.fps
-                  << " p95=" << std::chrono::duration<double, std::milli>(stats.p95FrameTime).count()
-                  << "ms p99=" << std::chrono::duration<double, std::milli>(stats.p99FrameTime).count()
+      } else {
+        fps.framePresented();
+      }
+      ui.renderDirty = false;
+      if (reportFps) {
+        std::cout << "fps " << fpsStats.fps
+                  << " p95=" << std::chrono::duration<double, std::milli>(fpsStats.p95FrameTime).count()
+                  << "ms p99=" << std::chrono::duration<double, std::milli>(fpsStats.p99FrameTime).count()
                   << "ms\n";
       }
     }
@@ -896,7 +1225,7 @@ int main() {
     for (const auto& event : batch.events) {
       if (auto* input = std::get_if<InputEvent>(&event.payload)) {
         if (auto* pointer = std::get_if<PointerEvent>(input)) {
-          if (pointer->phase != PointerPhase::Move) {
+          if (!suppressEventLogs && pointer->phase != PointerPhase::Move) {
             std::cout << "pointer " << pointerPhaseLabel(pointer->phase)
                       << " type=" << pointerTypeLabel(pointer->deviceType)
                       << " x=" << pointer->x << " y=" << pointer->y << "\n";
@@ -905,6 +1234,7 @@ int main() {
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
             ui.layoutDirty = true;
+            ui.renderDirty = true;
           }
           if (ui.layoutDirty) {
             PrimeFrame::LayoutOptions options;
@@ -914,26 +1244,21 @@ int main() {
             ui.layoutDirty = false;
           }
           PrimeFrame::Event pfEvent = toPrimeFrameEvent(*pointer);
-          ui.router.dispatch(pfEvent, ui.frame, ui.layout, nullptr);
+          bool handled = ui.router.dispatch(pfEvent, ui.frame, ui.layout, nullptr);
+          if (handled) {
+            ui.renderDirty = true;
+            markRenderDirty();
+          }
 
-          if (pointer->deviceType == PointerDeviceType::Mouse && pointer->phase == PointerPhase::Move) {
-            bool changed = false;
+          if (pointer->phase == PointerPhase::Down) {
             float px = static_cast<float>(pointer->x);
             float py = static_cast<float>(pointer->y);
-            for (auto& button : ui.buttons) {
-              bool inside = pointInNode(ui.layout, button.node, px, py);
-              if (button.hovered != inside) {
-                button.hovered = inside;
-                changed = true;
-              }
+            if (handleTreeClick(ui, state, px, py)) {
+              ui.needsRebuild = true;
+              ui.layoutDirty = true;
+              ui.renderDirty = true;
+              markRenderDirty();
             }
-            if (changed) {
-              ui.styleDirty = true;
-            }
-          }
-          if (ui.styleDirty) {
-            applyButtonStyles(ui.frame, ui.buttons);
-            ui.styleDirty = false;
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
           if (key->pressed && !key->repeat) {
@@ -941,7 +1266,7 @@ int main() {
               running = false;
             }
             if (isToggleKey(key->keyCode)) {
-              ui.styleDirty = true;
+              markRenderDirty();
             }
             if (key->keyCode == KeyF) {
               fullscreen = !fullscreen;
@@ -986,27 +1311,36 @@ int main() {
           }
         } else if (auto* text = std::get_if<TextEvent>(input)) {
           auto view = textFromSpan(batch, text->text);
-          if (view) {
+          if (view && !suppressEventLogs) {
             std::cout << "text: " << *view << "\n";
           }
         } else if (auto* scroll = std::get_if<ScrollEvent>(input)) {
-          std::cout << "scroll dx=" << scroll->deltaX << " dy=" << scroll->deltaY
-                    << (scroll->isLines ? " lines" : " px") << "\n";
+          if (!suppressEventLogs) {
+            std::cout << "scroll dx=" << scroll->deltaX << " dy=" << scroll->deltaY
+                      << (scroll->isLines ? " lines" : " px") << "\n";
+          }
         } else if (auto* device = std::get_if<DeviceEvent>(input)) {
-          std::cout << "device " << deviceTypeLabel(device->deviceType)
-                    << (device->connected ? " connected" : " disconnected")
-                    << " id=" << device->deviceId << "\n";
+          if (!suppressEventLogs) {
+            std::cout << "device " << deviceTypeLabel(device->deviceType)
+                      << (device->connected ? " connected" : " disconnected")
+                      << " id=" << device->deviceId << "\n";
+          }
         } else if (auto* gamepad = std::get_if<GamepadButtonEvent>(input)) {
-          std::cout << "gamepad button id=" << gamepad->controlId
-                    << " pressed=" << gamepad->pressed << "\n";
+          if (!suppressEventLogs) {
+            std::cout << "gamepad button id=" << gamepad->controlId
+                      << " pressed=" << gamepad->pressed << "\n";
+          }
         } else if (auto* axis = std::get_if<GamepadAxisEvent>(input)) {
-          std::cout << "gamepad axis id=" << axis->controlId << " value=" << axis->value << "\n";
+          if (!suppressEventLogs) {
+            std::cout << "gamepad axis id=" << axis->controlId << " value=" << axis->value << "\n";
+          }
         }
       } else if (auto* resize = std::get_if<ResizeEvent>(&event.payload)) {
         auto now = std::chrono::steady_clock::now();
         ui.lastResizeEvent = now;
-        if (ui.lastResizeLog.time_since_epoch().count() == 0 ||
-            now - ui.lastResizeLog > std::chrono::milliseconds(500)) {
+        if (!suppressEventLogs &&
+            (ui.lastResizeLog.time_since_epoch().count() == 0 ||
+             now - ui.lastResizeLog > std::chrono::milliseconds(500))) {
           std::cout << "resize " << resize->width << "x" << resize->height
                     << " scale=" << resize->scale << "\n";
           ui.lastResizeLog = now;
@@ -1014,18 +1348,25 @@ int main() {
         ui.logicalWidth = static_cast<float>(resize->width);
         ui.logicalHeight = static_cast<float>(resize->height);
         ui.scale = resize->scale;
+        ui.needsRebuild = true;
         ui.layoutDirty = true;
-        hostPtr->requestFrame(surfaceId, true);
+        markRenderDirty();
       } else if (auto* drop = std::get_if<DropEvent>(&event.payload)) {
-        dumpDropPaths(batch, *drop);
+        if (!suppressEventLogs) {
+          dumpDropPaths(batch, *drop);
+        }
       } else if (auto* focus = std::get_if<FocusEvent>(&event.payload)) {
-        std::cout << "focus " << focus->focused << "\n";
+        if (!suppressEventLogs) {
+          std::cout << "focus " << focus->focused << "\n";
+        }
       } else if (auto* power = std::get_if<PowerEvent>(&event.payload)) {
-        if (power->lowPowerModeEnabled.has_value()) {
+        if (!suppressEventLogs && power->lowPowerModeEnabled.has_value()) {
           std::cout << "power lowPower=" << power->lowPowerModeEnabled.value() << "\n";
         }
       } else if (auto* thermal = std::get_if<ThermalEvent>(&event.payload)) {
-        std::cout << "thermal state=" << static_cast<int>(thermal->state) << "\n";
+        if (!suppressEventLogs) {
+          std::cout << "thermal state=" << static_cast<int>(thermal->state) << "\n";
+        }
       } else if (auto* lifecycle = std::get_if<LifecycleEvent>(&event.payload)) {
         if (lifecycle->phase == LifecyclePhase::Destroyed) {
           running = false;
@@ -1036,11 +1377,141 @@ int main() {
   host->setCallbacks(callbacks);
   host->requestFrame(surfaceId, true);
 
+  if (perfEnabled) {
+    uint32_t totalFrames = perf.warmupFrames + perf.measureFrames;
+    if (perf.measureFrames < 2u) {
+      std::cout << "perf: --frames must be >= 2\n";
+      host->destroySurface(surfaceId);
+      return 2;
+    }
+    if (perf.resizeStress && config.headless) {
+      std::cout << "perf: resize-stress requires a windowed surface\n";
+      host->destroySurface(surfaceId);
+      return 2;
+    }
+    uint32_t timeoutMs = perf.timeoutMs;
+    if (timeoutMs == 0u) {
+      uint32_t minMs = 5000u;
+      uint32_t estimateMs = static_cast<uint32_t>(totalFrames * 1000u / 30u);
+      timeoutMs = std::max(minMs, estimateMs);
+    }
+    bool timeout = false;
+    auto resizeStep = [&](std::chrono::steady_clock::time_point now) {
+      if (!perf.resizeStress) {
+        return;
+      }
+      if (perf.resizeMaxW <= perf.resizeMinW || perf.resizeMaxH <= perf.resizeMinH) {
+        return;
+      }
+      if (perfState.lastResize.time_since_epoch().count() == 0) {
+        perfState.lastResize = now;
+      }
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - perfState.lastResize);
+      if (elapsed.count() < static_cast<int64_t>(perf.resizeIntervalMs)) {
+        return;
+      }
+      perfState.lastResize = now;
+      double step = 1.0 / static_cast<double>(perf.resizeSteps);
+      perfState.resizePhase += step * static_cast<double>(perfState.resizeDir);
+      if (perfState.resizePhase >= 1.0) {
+        perfState.resizePhase = 1.0;
+        perfState.resizeDir = -1;
+      } else if (perfState.resizePhase <= 0.0) {
+        perfState.resizePhase = 0.0;
+        perfState.resizeDir = 1;
+      }
+      double t = perfState.resizePhase;
+      uint32_t width = static_cast<uint32_t>(std::lround(
+          static_cast<double>(perf.resizeMinW) +
+          (static_cast<double>(perf.resizeMaxW) - static_cast<double>(perf.resizeMinW)) * t));
+      uint32_t height = static_cast<uint32_t>(std::lround(
+          static_cast<double>(perf.resizeMinH) +
+          (static_cast<double>(perf.resizeMaxH) - static_cast<double>(perf.resizeMinH)) * t));
+      if (width != perfState.lastResizeW || height != perfState.lastResizeH) {
+        hostPtr->setSurfaceSize(surfaceId, width, height);
+        perfState.lastResizeW = width;
+        perfState.lastResizeH = height;
+      }
+    };
+    if (perf.mode == PerfMode::Headless) {
+      auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+      while (true) {
+        {
+          std::lock_guard<std::mutex> lock(perfState.mutex);
+          if (perfState.presented >= totalFrames) {
+            break;
+          }
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+          timeout = true;
+          break;
+        }
+        host->requestFrame(surfaceId, true);
+      }
+    } else {
+      auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+      std::array<PrimeHost::Event, 64> events{};
+      std::array<char, 2048> text{};
+      EventBuffer buffer{
+          std::span<PrimeHost::Event>(events.data(), events.size()),
+          std::span<char>(text.data(), text.size()),
+      };
+      while (true) {
+        auto now = std::chrono::steady_clock::now();
+        {
+          std::lock_guard<std::mutex> lock(perfState.mutex);
+          if (perfState.presented >= totalFrames) {
+            break;
+          }
+        }
+        if (now >= deadline) {
+          timeout = true;
+          break;
+        }
+        host->pollEvents(buffer);
+        resizeStep(now);
+        std::unique_lock<std::mutex> lock(perfState.mutex);
+        perfState.cv.wait_for(lock, std::chrono::milliseconds(10));
+      }
+      {
+        std::lock_guard<std::mutex> lock(perfState.mutex);
+        perfState.done = true;
+      }
+    }
+    FpsStats stats{};
+    {
+      std::lock_guard<std::mutex> lock(perfState.mutex);
+      stats = fps.stats();
+    }
+    double p95Ms = std::chrono::duration<double, std::milli>(stats.p95FrameTime).count();
+    bool pass = stats.fps >= perf.minFps;
+    if (perf.maxP95Ms > 0.0) {
+      pass = pass && p95Ms <= perf.maxP95Ms;
+    }
+    std::cout << "perf fps=" << stats.fps
+              << " p95=" << p95Ms << "ms"
+              << " minFps=" << perf.minFps;
+    if (perf.maxP95Ms > 0.0) {
+      std::cout << " maxP95Ms=" << perf.maxP95Ms;
+    }
+    if (timeout) {
+      std::cout << " TIMEOUT";
+      pass = false;
+    }
+    std::cout << " " << (pass ? "PASS" : "FAIL") << "\n";
+    host->destroySurface(surfaceId);
+    return pass ? 0 : 2;
+  }
+
   std::cout << "Controls: ESC quit, F fullscreen, M minimize, X maximize, R relative pointer,"
                " C copy, V paste, O open dialog, P screenshot, I toggle cursor." << std::endl;
 
   while (running) {
     host->waitEvents();
+    if (frameConfig.framePolicy != FramePolicy::Continuous &&
+        (ui.renderDirty || ui.needsRebuild || ui.layoutDirty)) {
+      host->requestFrame(surfaceId, true);
+    }
   }
 
   host->destroySurface(surfaceId);

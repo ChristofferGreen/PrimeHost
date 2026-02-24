@@ -5,7 +5,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 build_type="Debug"
 build_dir="build-debug"
-example_target="primehost_stub"
+example_target=""
 
 print_help() {
   cat <<'USAGE'
@@ -16,8 +16,11 @@ Builds PrimeHost example binaries.
 Options:
   --release          Build with Release configuration (default: Debug)
   --debug            Build with Debug configuration
-  --example <name>   Example to build: stub | gamepad_audio | <cmake-target>
-  --all              Build all examples (default target)
+  --example <name>   Example to build: stub | app | gamepad_audio | <cmake-target>
+  --all              Build all examples (default)
+Notes:
+  On macOS, this script uses clang++ (Objective-C++ requires Clang).
+  On macOS, the PrimeStage UI example builds by default.
 USAGE
 }
 
@@ -41,6 +44,9 @@ while [[ $# -gt 0 ]]; do
       case "$2" in
         stub)
           example_target="primehost_stub"
+          ;;
+        app)
+          example_target="primehost_app"
           ;;
         gamepad_audio)
           example_target="primehost_gamepad_audio"
@@ -67,10 +73,52 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  cxx_compiler="clang++"
+  objcxx_compiler="clang++"
+  primestage_example="ON"
+else
+  cxx_compiler=""
+  objcxx_compiler=""
+  primestage_example="OFF"
+fi
+
+primestage_repo=""
+primeframe_repo=""
+primestage_source_dir=""
+primeframe_source_dir=""
+if [[ -d "$root_dir/../PrimeStage/.git" ]]; then
+  primestage_repo="$root_dir/../PrimeStage"
+  primestage_source_dir="$root_dir/../PrimeStage"
+fi
+if [[ -d "$root_dir/../PrimeFrame/.git" ]]; then
+  primeframe_repo="$root_dir/../PrimeFrame"
+  primeframe_source_dir="$root_dir/../PrimeFrame"
+fi
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  cache_file="$root_dir/$build_dir/CMakeCache.txt"
+  if [[ -f "$cache_file" ]]; then
+    cached_cxx="$(awk -F= '/^CMAKE_CXX_COMPILER:FILEPATH=/{print $2}' "$cache_file" | tail -n 1)"
+    cached_objcxx="$(awk -F= '/^CMAKE_OBJCXX_COMPILER:FILEPATH=/{print $2}' "$cache_file" | tail -n 1)"
+    if [[ "$cached_cxx" != *clang++* || "$cached_objcxx" != *clang++* ]]; then
+      echo "Removing $build_dir (compiler mismatch: requires clang++ on macOS)" >&2
+      rm -rf "$root_dir/$build_dir"
+    fi
+  fi
+fi
+
 cmake -S "$root_dir" -B "$root_dir/$build_dir" \
   -DCMAKE_BUILD_TYPE="$build_type" \
   -DPRIMEHOST_BUILD_EXAMPLES=ON \
-  -DPRIMEHOST_BUILD_TESTS=OFF
+  -DPRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE="$primestage_example" \
+  -DPRIMEHOST_BUILD_TESTS=OFF \
+  ${primestage_repo:+-DPRIMEHOST_PRIMESTAGE_GIT_REPOSITORY="$primestage_repo"} \
+  ${primeframe_repo:+-DPRIMEFRAME_GIT_REPOSITORY="$primeframe_repo"} \
+  ${primestage_source_dir:+-DFETCHCONTENT_SOURCE_DIR_PRIMESTAGE="$primestage_source_dir"} \
+  ${primeframe_source_dir:+-DFETCHCONTENT_SOURCE_DIR_PRIMEFRAME="$primeframe_source_dir"} \
+  ${cxx_compiler:+-DCMAKE_CXX_COMPILER="$cxx_compiler"} \
+  ${objcxx_compiler:+-DCMAKE_OBJCXX_COMPILER="$objcxx_compiler"}
 
 if [[ -n "$example_target" ]]; then
   cmake --build "$root_dir/$build_dir" --target "$example_target"

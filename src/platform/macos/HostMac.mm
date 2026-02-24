@@ -1809,8 +1809,8 @@ HostResult<SurfaceId> HostMac::createSurface(const SurfaceConfig& config) {
   layer.device = device;
   layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   layer.framebufferOnly = YES;
-  layer.presentsWithTransaction = YES;
-  layer.allowsNextDrawableTimeout = NO;
+  layer.presentsWithTransaction = NO;
+  layer.allowsNextDrawableTimeout = YES;
   layer.needsDisplayOnBoundsChange = YES;
   layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
   [CATransaction begin];
@@ -2117,7 +2117,7 @@ HostStatus HostMac::presentFrameBuffer(SurfaceId surfaceId, const FrameBuffer& b
 
     id<CAMetalDrawable> drawable = [surface->layer nextDrawable];
     if (!drawable) {
-      return std::unexpected(HostError{HostErrorCode::PlatformFailure});
+      return {};
     }
 
     id<MTLCommandBuffer> commandBuffer = [surface->commandQueue commandBuffer];
