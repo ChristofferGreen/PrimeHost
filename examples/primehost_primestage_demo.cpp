@@ -4,7 +4,6 @@
 
 #include "PrimeFrame/Events.h"
 #include "PrimeFrame/Layout.h"
-#include "PrimeFrame/Theme.h"
 #include "PrimeStage/TextSelection.h"
 
 #include <algorithm>
@@ -151,8 +150,7 @@ struct DemoUi {
   PrimeFrame::NodeId searchFieldNode{};
   PrimeFrame::NodeId boardTextNode{};
   PrimeStage::TreeViewSpec treeViewSpec{};
-  std::vector<PrimeStage::TextSelectionLine> boardTextLines;
-  float boardLineHeight = 0.0f;
+  PrimeStage::TextSelectionLayout boardTextLayout{};
   struct TreeRowRef {
     PrimeStage::TreeNode* node = nullptr;
     int depth = 0;
@@ -508,16 +506,6 @@ bool handleTreeClick(DemoUi& ui, DemoState& state, float px, float py) {
   return false;
 }
 
-float resolveLineHeight(PrimeFrame::Frame& frame, PrimeFrame::TextStyleToken style) {
-  PrimeFrame::Theme const* theme = frame.getTheme(PrimeFrame::DefaultThemeId);
-  if (!theme) {
-    return 0.0f;
-  }
-  PrimeFrame::ResolvedTextStyle resolved = PrimeFrame::resolveTextStyle(*theme, style, {});
-  float lineHeight = resolved.lineHeight > 0.0f ? resolved.lineHeight : resolved.size * 1.2f;
-  return lineHeight;
-}
-
 bool hasSearchSelection(const DemoState& state, uint32_t& start, uint32_t& end) {
   start = std::min(state.searchSelectionStart, state.searchSelectionEnd);
   end = std::max(state.searchSelectionStart, state.searchSelectionEnd);
@@ -553,8 +541,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.treeViewNode = PrimeFrame::NodeId{};
   ui.searchFieldNode = PrimeFrame::NodeId{};
   ui.boardTextNode = PrimeFrame::NodeId{};
-  ui.boardTextLines.clear();
-  ui.boardLineHeight = 0.0f;
+  ui.boardTextLayout = {};
   ui.treeRows.clear();
   ensureTreeState(state);
   updateOpacityLabel(state);
@@ -788,14 +775,13 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     SizeSpec paragraphSize;
     paragraphSize.preferredWidth = boardTextWidth;
     PrimeFrame::TextStyleToken boardTextStyle = textToken(TextRole::SmallMuted);
-    ui.boardLineHeight = resolveLineHeight(ui.frame, boardTextStyle);
-    ui.boardTextLines = PrimeStage::wrapTextLineRanges(ui.frame,
-                                                       boardTextStyle,
-                                                       state.boardText,
-                                                       boardTextWidth,
-                                                       PrimeFrame::WrapMode::Word);
-    float paragraphHeight = ui.boardLineHeight *
-                            static_cast<float>(std::max<size_t>(1u, ui.boardTextLines.size()));
+    ui.boardTextLayout = PrimeStage::buildTextSelectionLayout(ui.frame,
+                                                              boardTextStyle,
+                                                              state.boardText,
+                                                              boardTextWidth,
+                                                              PrimeFrame::WrapMode::Word);
+    size_t lineCount = std::max<size_t>(1u, ui.boardTextLayout.lines.size());
+    float paragraphHeight = ui.boardTextLayout.lineHeight * static_cast<float>(lineCount);
     StackSpec paragraphOverlaySpec;
     paragraphOverlaySpec.size.preferredWidth = boardTextWidth;
     paragraphOverlaySpec.size.preferredHeight = paragraphHeight;
@@ -803,49 +789,16 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     UiNode paragraphOverlay = boardPanel.createOverlay(paragraphOverlaySpec);
     ui.boardTextNode = paragraphOverlay.nodeId();
 
-    StackSpec selectionColumnSpec;
-    selectionColumnSpec.size.preferredWidth = boardTextWidth;
-    selectionColumnSpec.size.preferredHeight = paragraphHeight;
-    selectionColumnSpec.gap = 0.0f;
-    UiNode selectionColumn = paragraphOverlay.createVerticalStack(selectionColumnSpec);
-    uint32_t selectionStart = 0u;
-    uint32_t selectionEnd = 0u;
-    bool hasSelection = hasBoardSelection(state, selectionStart, selectionEnd);
-    for (size_t lineIndex = 0; lineIndex < ui.boardTextLines.size(); ++lineIndex) {
-      const auto& line = ui.boardTextLines[lineIndex];
-      StackSpec lineSpec;
-      lineSpec.size.preferredWidth = boardTextWidth;
-      lineSpec.size.preferredHeight = ui.boardLineHeight;
-      lineSpec.gap = 0.0f;
-      UiNode lineRow = selectionColumn.createHorizontalStack(lineSpec);
-      float leftWidth = 0.0f;
-      float selectWidth = 0.0f;
-      if (hasSelection && selectionEnd > line.start && selectionStart < line.end) {
-        uint32_t localStart = std::max(selectionStart, line.start) - line.start;
-        uint32_t localEnd = std::min(selectionEnd, line.end) - line.start;
-        std::string_view lineText(state.boardText.data() + line.start,
-                                  line.end - line.start);
-        leftWidth = PrimeStage::measureTextWidth(ui.frame, boardTextStyle, lineText.substr(0, localStart));
-        float rightWidth = PrimeStage::measureTextWidth(ui.frame, boardTextStyle, lineText.substr(0, localEnd));
-        selectWidth = std::max(0.0f, rightWidth - leftWidth);
-      }
-      if (leftWidth > 0.0f) {
-        SizeSpec leftSize;
-        leftSize.preferredWidth = leftWidth;
-        leftSize.preferredHeight = ui.boardLineHeight;
-        lineRow.createSpacer(leftSize);
-      }
-      if (selectWidth > 0.0f) {
-        SizeSpec selectSize;
-        selectSize.preferredWidth = selectWidth;
-        selectSize.preferredHeight = ui.boardLineHeight;
-        lineRow.createPanel(rectToken(RectRole::Selection), selectSize);
-      }
-      SizeSpec fillSize;
-      fillSize.stretchX = 1.0f;
-      fillSize.preferredHeight = ui.boardLineHeight;
-      lineRow.createSpacer(fillSize);
-    }
+    TextSelectionOverlaySpec selectionSpec;
+    selectionSpec.text = state.boardText;
+    selectionSpec.textStyle = boardTextStyle;
+    selectionSpec.layout = &ui.boardTextLayout;
+    selectionSpec.selectionStart = state.boardSelectionStart;
+    selectionSpec.selectionEnd = state.boardSelectionEnd;
+    selectionSpec.selectionStyle = rectToken(RectRole::Selection);
+    selectionSpec.size.preferredWidth = boardTextWidth;
+    selectionSpec.size.preferredHeight = paragraphHeight;
+    paragraphOverlay.createTextSelectionOverlay(selectionSpec);
 
     paragraphSize.preferredHeight = paragraphHeight;
     ParagraphSpec paragraphSpec;
@@ -1562,19 +1515,13 @@ int main(int argc, char** argv) {
               const PrimeFrame::LayoutOut* boardOut = ui.layout.get(ui.boardTextNode);
               float localX = boardOut ? (px - boardOut->absX) : 0.0f;
               float localY = boardOut ? (py - boardOut->absY) : 0.0f;
-              uint32_t cursorIndex = 0u;
-              if (!ui.boardTextLines.empty() && ui.boardLineHeight > 0.0f) {
-                int lineIndex = static_cast<int>(localY / ui.boardLineHeight);
-                lineIndex = std::clamp(lineIndex, 0, static_cast<int>(ui.boardTextLines.size() - 1u));
-                const auto& line = ui.boardTextLines[static_cast<size_t>(lineIndex)];
-                std::string_view lineText(state.boardText.data() + line.start,
-                                          line.end - line.start);
-                cursorIndex = line.start + PrimeStage::caretIndexForClick(ui.frame,
-                                                                          textToken(TextRole::SmallMuted),
-                                                                          lineText,
-                                                                          0.0f,
-                                                                          localX);
-              }
+              uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
+                                                                            textToken(TextRole::SmallMuted),
+                                                                            state.boardText,
+                                                                            ui.boardTextLayout,
+                                                                            0.0f,
+                                                                            localX,
+                                                                            localY);
               setBoardFocus(true, cursorIndex);
               state.boardSelecting = true;
               state.boardPointerId = static_cast<int>(pointer->pointerId);
@@ -1619,19 +1566,13 @@ int main(int argc, char** argv) {
               float px = static_cast<float>(pointer->x);
               float localX = boardOut ? (px - boardOut->absX) : 0.0f;
               float localY = boardOut ? (static_cast<float>(pointer->y) - boardOut->absY) : 0.0f;
-              uint32_t cursorIndex = 0u;
-              if (!ui.boardTextLines.empty() && ui.boardLineHeight > 0.0f) {
-                int lineIndex = static_cast<int>(localY / ui.boardLineHeight);
-                lineIndex = std::clamp(lineIndex, 0, static_cast<int>(ui.boardTextLines.size() - 1u));
-                const auto& line = ui.boardTextLines[static_cast<size_t>(lineIndex)];
-                std::string_view lineText(state.boardText.data() + line.start,
-                                          line.end - line.start);
-                cursorIndex = line.start + PrimeStage::caretIndexForClick(ui.frame,
-                                                                          textToken(TextRole::SmallMuted),
-                                                                          lineText,
-                                                                          0.0f,
-                                                                          localX);
-              }
+              uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
+                                                                            textToken(TextRole::SmallMuted),
+                                                                            state.boardText,
+                                                                            ui.boardTextLayout,
+                                                                            0.0f,
+                                                                            localX,
+                                                                            localY);
               state.boardSelectionStart = state.boardSelectionAnchor;
               state.boardSelectionEnd = cursorIndex;
               markBoardDirty();
