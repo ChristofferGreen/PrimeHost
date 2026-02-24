@@ -597,42 +597,42 @@ std::vector<DemoUi::WrappedLine> wrapTextLineRanges(PrimeFrame::Frame& frame,
   }
   if (maxWidth <= 0.0f || wrap == PrimeFrame::WrapMode::None) {
     uint32_t lineStart = 0u;
-    float lineWidth = 0.0f;
     for (uint32_t i = 0u; i < text.size(); ++i) {
       if (text[i] == '\n') {
-        lines.push_back({lineStart, i, lineWidth});
+        float width = PrimeStage::measureTextWidth(frame, style, text.substr(lineStart, i - lineStart));
+        lines.push_back({lineStart, i, width});
         lineStart = i + 1u;
-        lineWidth = 0.0f;
-        continue;
       }
-      lineWidth = PrimeStage::measureTextWidth(frame, style, text.substr(lineStart, i + 1u - lineStart));
     }
-    lines.push_back({lineStart, static_cast<uint32_t>(text.size()), lineWidth});
+    float width = PrimeStage::measureTextWidth(frame,
+                                               style,
+                                               text.substr(lineStart, text.size() - lineStart));
+    lines.push_back({lineStart, static_cast<uint32_t>(text.size()), width});
     return lines;
   }
 
   float spaceWidth = PrimeStage::measureTextWidth(frame, style, " ");
+  bool wrapByChar = wrap == PrimeFrame::WrapMode::Character;
+  uint32_t i = 0u;
   uint32_t lineStart = 0u;
+  uint32_t lineEnd = 0u;
   float lineWidth = 0.0f;
   bool lineHasWord = false;
-  bool wrapByChar = wrap == PrimeFrame::WrapMode::Character;
 
-  auto push_line = [&](uint32_t endIndex) {
-    lines.push_back({lineStart, endIndex, lineWidth});
+  auto push_line = [&](uint32_t endIndex, float width) {
+    lines.push_back({lineStart, endIndex, width});
     lineStart = endIndex;
+    lineEnd = endIndex;
     lineWidth = 0.0f;
     lineHasWord = false;
   };
 
-  uint32_t i = 0u;
   while (i < text.size()) {
     char ch = text[i];
     if (ch == '\n') {
-      push_line(i);
+      push_line(lineHasWord ? lineEnd : i, lineWidth);
       ++i;
-      if (lineStart < text.size() && text[lineStart] == '\n') {
-        ++lineStart;
-      }
+      lineStart = i;
       continue;
     }
     if (std::isspace(static_cast<unsigned char>(ch))) {
@@ -640,31 +640,43 @@ std::vector<DemoUi::WrappedLine> wrapTextLineRanges(PrimeFrame::Frame& frame,
       continue;
     }
     uint32_t wordStart = i;
-    while (i < text.size()) {
-      char wordCh = text[i];
-      if (wordCh == '\n' || std::isspace(static_cast<unsigned char>(wordCh))) {
-        break;
-      }
-      ++i;
-      if (wrapByChar) {
-        break;
+    if (wrapByChar) {
+      i = utf8Next(text, i);
+    } else {
+      while (i < text.size()) {
+        char wordCh = text[i];
+        if (wordCh == '\n' || std::isspace(static_cast<unsigned char>(wordCh))) {
+          break;
+        }
+        ++i;
       }
     }
     uint32_t wordEnd = i;
+    if (wordEnd <= wordStart) {
+      ++i;
+      continue;
+    }
     float wordWidth = PrimeStage::measureTextWidth(frame, style, text.substr(wordStart, wordEnd - wordStart));
     if (lineHasWord && lineWidth + spaceWidth + wordWidth > maxWidth) {
-      push_line(wordStart);
+      push_line(lineEnd, lineWidth);
     }
     if (!lineHasWord) {
       lineStart = wordStart;
+      lineEnd = wordEnd;
       lineWidth = wordWidth;
       lineHasWord = true;
     } else {
+      lineEnd = wordEnd;
       lineWidth += spaceWidth + wordWidth;
     }
   }
-  if (lineHasWord || lineStart < text.size()) {
-    lines.push_back({lineStart, static_cast<uint32_t>(text.size()), lineWidth});
+  if (lineHasWord) {
+    push_line(lineEnd, lineWidth);
+  } else if (lineStart < text.size()) {
+    lines.push_back({lineStart, static_cast<uint32_t>(text.size()), 0.0f});
+  }
+  if (lines.empty()) {
+    lines.push_back({0u, static_cast<uint32_t>(text.size()), 0.0f});
   }
   return lines;
 }
@@ -717,9 +729,11 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   state.searchSelectionAnchor = std::min(state.searchSelectionAnchor,
                                          static_cast<uint32_t>(state.searchText.size()));
   if (state.boardText.empty()) {
-    state.boardText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
-                      "Sed do eiusmod tempor incididunt ut labore et dolore. "
-                      "Ut enim ad minim veniam, quis nostrud exercitation.";
+    std::string base =
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+        "Sed do eiusmod tempor incididunt ut labore et dolore. "
+        "Ut enim ad minim veniam, quis nostrud exercitation.";
+    state.boardText = base + " " + base + " " + base;
   }
   state.boardSelectionStart = std::min(state.boardSelectionStart,
                                        static_cast<uint32_t>(state.boardText.size()));
