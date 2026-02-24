@@ -185,6 +185,9 @@ if(PRIMEHOST_BUILD_TESTS)
 endif()
 
 option(PRIMEHOST_BUILD_EXAMPLES "Build PrimeHost example apps" OFF)
+set(PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY "https://github.com/ChristofferGreen/PrimeStage.git"
+    CACHE STRING "PrimeStage git repository")
+set(PRIMEHOST_PRIMESTAGE_GIT_TAG "master" CACHE STRING "PrimeStage git tag or commit")
 if(PRIMEHOST_BUILD_EXAMPLES)
   add_executable(primehost_stub examples/primehost_stub.cpp)
   target_link_libraries(primehost_stub PRIVATE PrimeHost)
@@ -195,32 +198,22 @@ if(PRIMEHOST_BUILD_EXAMPLES)
   add_executable(primehost_gamepad_audio examples/primehost_gamepad_audio.cpp)
   target_link_libraries(primehost_gamepad_audio PRIVATE PrimeHost)
   ph_require_cxx23(primehost_gamepad_audio)
-endif()
+  if(APPLE)
+    include(FetchContent)
+    set(PRIMESTAGE_FETCH_PRIMEFRAME ON CACHE BOOL "Fetch PrimeFrame dependency" FORCE)
+    set(PRIMESTAGE_ENABLE_PRIMEMANIFEST ON CACHE BOOL "Enable PrimeManifest integration" FORCE)
+    set(PRIMESTAGE_BUILD_TESTS OFF CACHE BOOL "Build PrimeStage tests" FORCE)
+    set(PRIMESTAGE_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeStage examples" FORCE)
+    FetchContent_Declare(
+      PrimeStage
+      GIT_REPOSITORY ${PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY}
+      GIT_TAG ${PRIMEHOST_PRIMESTAGE_GIT_TAG}
+    )
+    FetchContent_MakeAvailable(PrimeStage)
 
-option(PRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE "Build PrimeHost PrimeStage UI example" OFF)
-set(PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY "https://github.com/ChristofferGreen/PrimeStage.git"
-    CACHE STRING "PrimeStage git repository")
-set(PRIMEHOST_PRIMESTAGE_GIT_TAG "master" CACHE STRING "PrimeStage git tag or commit")
-
-if(PRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE)
-  if(NOT APPLE)
-    message(FATAL_ERROR "primehost_primestage_demo is macOS-only for now.")
+    add_executable(primehost_primestage_demo examples/primehost_primestage_demo.cpp)
+    target_link_libraries(primehost_primestage_demo PRIVATE PrimeHost PrimeStage)
+    target_include_directories(primehost_primestage_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    ph_require_cxx23(primehost_primestage_demo)
   endif()
-
-  include(FetchContent)
-  set(PRIMESTAGE_FETCH_PRIMEFRAME ON CACHE BOOL "Fetch PrimeFrame dependency" FORCE)
-  set(PRIMESTAGE_ENABLE_PRIMEMANIFEST ON CACHE BOOL "Enable PrimeManifest integration" FORCE)
-  set(PRIMESTAGE_BUILD_TESTS OFF CACHE BOOL "Build PrimeStage tests" FORCE)
-  set(PRIMESTAGE_BUILD_EXAMPLES OFF CACHE BOOL "Build PrimeStage examples" FORCE)
-  FetchContent_Declare(
-    PrimeStage
-    GIT_REPOSITORY ${PRIMEHOST_PRIMESTAGE_GIT_REPOSITORY}
-    GIT_TAG ${PRIMEHOST_PRIMESTAGE_GIT_TAG}
-  )
-  FetchContent_MakeAvailable(PrimeStage)
-
-  add_executable(primehost_primestage_demo examples/primehost_primestage_demo.cpp)
-  target_link_libraries(primehost_primestage_demo PRIVATE PrimeHost PrimeStage)
-  target_include_directories(primehost_primestage_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-  ph_require_cxx23(primehost_primestage_demo)
 endif()

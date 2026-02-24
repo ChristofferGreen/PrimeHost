@@ -76,11 +76,9 @@ done
 if [[ "$(uname -s)" == "Darwin" ]]; then
   cxx_compiler="clang++"
   objcxx_compiler="clang++"
-  primestage_example="ON"
 else
   cxx_compiler=""
   objcxx_compiler=""
-  primestage_example="OFF"
 fi
 
 primestage_repo=""
@@ -111,7 +109,6 @@ fi
 cmake -S "$root_dir" -B "$root_dir/$build_dir" \
   -DCMAKE_BUILD_TYPE="$build_type" \
   -DPRIMEHOST_BUILD_EXAMPLES=ON \
-  -DPRIMEHOST_BUILD_PRIMESTAGE_EXAMPLE="$primestage_example" \
   -DPRIMEHOST_BUILD_TESTS=OFF \
   ${primestage_repo:+-DPRIMEHOST_PRIMESTAGE_GIT_REPOSITORY="$primestage_repo"} \
   ${primeframe_repo:+-DPRIMEFRAME_GIT_REPOSITORY="$primeframe_repo"} \
