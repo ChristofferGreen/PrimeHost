@@ -83,8 +83,10 @@ fi
 
 primestage_repo=""
 primeframe_repo=""
+primestudio_repo=""
 primestage_source_dir=""
 primeframe_source_dir=""
+primestudio_source_dir=""
 if [[ -d "$root_dir/../PrimeStage/.git" ]]; then
   primestage_repo="$root_dir/../PrimeStage"
   primestage_source_dir="$root_dir/../PrimeStage"
@@ -92,6 +94,10 @@ fi
 if [[ -d "$root_dir/../PrimeFrame/.git" ]]; then
   primeframe_repo="$root_dir/../PrimeFrame"
   primeframe_source_dir="$root_dir/../PrimeFrame"
+fi
+if [[ -d "$root_dir/../PrimeStudio/.git" ]]; then
+  primestudio_repo="$root_dir/../PrimeStudio"
+  primestudio_source_dir="$root_dir/../PrimeStudio"
 fi
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -111,8 +117,10 @@ cmake -S "$root_dir" -B "$root_dir/$build_dir" \
   -DPRIMEHOST_BUILD_EXAMPLES=ON \
   -DPRIMEHOST_BUILD_TESTS=OFF \
   ${primestage_repo:+-DPRIMEHOST_PRIMESTAGE_GIT_REPOSITORY="$primestage_repo"} \
+  ${primestudio_repo:+-DPRIMEHOST_PRIMESTUDIO_GIT_REPOSITORY="$primestudio_repo"} \
   ${primeframe_repo:+-DPRIMEFRAME_GIT_REPOSITORY="$primeframe_repo"} \
   ${primestage_source_dir:+-DFETCHCONTENT_SOURCE_DIR_PRIMESTAGE="$primestage_source_dir"} \
+  ${primestudio_source_dir:+-DFETCHCONTENT_SOURCE_DIR_PRIMESTUDIO="$primestudio_source_dir"} \
   ${primeframe_source_dir:+-DFETCHCONTENT_SOURCE_DIR_PRIMEFRAME="$primeframe_source_dir"} \
   ${cxx_compiler:+-DCMAKE_CXX_COMPILER="$cxx_compiler"} \
   ${objcxx_compiler:+-DCMAKE_OBJCXX_COMPILER="$objcxx_compiler"}
