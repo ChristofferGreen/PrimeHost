@@ -4,7 +4,6 @@
 
 #include "PrimeFrame/Events.h"
 #include "PrimeFrame/Layout.h"
-#include "PrimeStage/TextSelection.h"
 
 #include <algorithm>
 #include <array>
@@ -139,8 +138,6 @@ struct DemoUi {
   PrimeFrame::EventRouter router;
   PrimeFrame::FocusManager focus;
   PrimeFrame::NodeId treeViewNode{};
-  PrimeFrame::NodeId boardTextNode{};
-  PrimeStage::TextSelectionLayout boardTextLayout{};
   Host* host = nullptr;
   float cursorX = 0.0f;
   float cursorY = 0.0f;
@@ -165,13 +162,7 @@ struct DemoState {
   std::string opacityLabel;
   PrimeStage::TextFieldState searchField;
   std::string boardText;
-  bool boardFocused = false;
-  bool boardHover = false;
-  bool boardSelecting = false;
-  uint32_t boardSelectionAnchor = 0u;
-  uint32_t boardSelectionStart = 0u;
-  uint32_t boardSelectionEnd = 0u;
-  int boardPointerId = -1;
+  PrimeStage::SelectableTextState boardSelection;
   float treeScrollProgress = 0.0f;
 };
 
@@ -494,35 +485,11 @@ bool parseArgs(int argc, char** argv, PerfConfig& perf) {
   return true;
 }
 
-bool pointInNode(const PrimeFrame::LayoutOutput& layout, PrimeFrame::NodeId node, float x, float y) {
-  const PrimeFrame::LayoutOut* out = layout.get(node);
-  if (!out || !out->visible) {
-    return false;
-  }
-  return x >= out->absX && y >= out->absY && x <= (out->absX + out->absW) && y <= (out->absY + out->absH);
-}
-
-bool hasBoardSelection(const DemoState& state, uint32_t& start, uint32_t& end) {
-  start = std::min(state.boardSelectionStart, state.boardSelectionEnd);
-  end = std::max(state.boardSelectionStart, state.boardSelectionEnd);
-  return start != end;
-}
-
-void clearBoardSelection(DemoState& state, uint32_t cursor) {
-  state.boardSelectionAnchor = cursor;
-  state.boardSelectionStart = cursor;
-  state.boardSelectionEnd = cursor;
-  state.boardSelecting = false;
-  state.boardPointerId = -1;
-}
-
 void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.frame = PrimeFrame::Frame{};
   ui.fpsNode = PrimeFrame::NodeId{};
   ui.opacityValueNode = PrimeFrame::NodeId{};
   ui.treeViewNode = PrimeFrame::NodeId{};
-  ui.boardTextNode = PrimeFrame::NodeId{};
-  ui.boardTextLayout = {};
   ui.focus = PrimeFrame::FocusManager{};
   ensureTreeState(state);
   updateOpacityLabel(state);
@@ -541,12 +508,15 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
         "Ut enim ad minim veniam, quis nostrud exercitation.";
     state.boardText = base + " " + base + " " + base;
   }
-  state.boardSelectionStart = std::min(state.boardSelectionStart,
-                                       static_cast<uint32_t>(state.boardText.size()));
-  state.boardSelectionEnd = std::min(state.boardSelectionEnd,
-                                     static_cast<uint32_t>(state.boardText.size()));
-  state.boardSelectionAnchor = std::min(state.boardSelectionAnchor,
-                                        static_cast<uint32_t>(state.boardText.size()));
+  state.boardSelection.selectionAnchor =
+      std::min(state.boardSelection.selectionAnchor,
+               static_cast<uint32_t>(state.boardText.size()));
+  state.boardSelection.selectionStart =
+      std::min(state.boardSelection.selectionStart,
+               static_cast<uint32_t>(state.boardText.size()));
+  state.boardSelection.selectionEnd =
+      std::min(state.boardSelection.selectionEnd,
+               static_cast<uint32_t>(state.boardText.size()));
 
   SizeSpec shellSize;
   shellSize.preferredWidth = ui.logicalWidth;
@@ -810,40 +780,25 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     createTextLine(boardPanel, "Active Board", TextRole::SmallMuted, titleSize);
 
     PrimeFrame::TextStyleToken boardTextStyle = textToken(TextRole::SmallMuted);
-    SizeSpec paragraphSize;
-    paragraphSize.preferredWidth = boardTextWidth;
-    ui.boardTextLayout = PrimeStage::buildTextSelectionLayout(ui.frame,
-                                                              boardTextStyle,
-                                                              state.boardText,
-                                                              boardTextWidth,
-                                                              PrimeFrame::WrapMode::Word);
-    size_t lineCount = std::max<size_t>(1u, ui.boardTextLayout.lines.size());
-    float paragraphHeight = ui.boardTextLayout.lineHeight * static_cast<float>(lineCount);
-    StackSpec paragraphOverlaySpec;
-    paragraphOverlaySpec.size.preferredWidth = boardTextWidth;
-    paragraphOverlaySpec.size.preferredHeight = paragraphHeight;
-    paragraphOverlaySpec.clipChildren = true;
-    UiNode paragraphOverlay = boardPanel.createOverlay(paragraphOverlaySpec);
-    ui.boardTextNode = paragraphOverlay.nodeId();
-
-    TextSelectionOverlaySpec selectionSpec;
+    SelectableTextSpec selectionSpec;
+    selectionSpec.state = &state.boardSelection;
     selectionSpec.text = state.boardText;
     selectionSpec.textStyle = boardTextStyle;
-    selectionSpec.layout = &ui.boardTextLayout;
-    selectionSpec.selectionStart = state.boardSelectionStart;
-    selectionSpec.selectionEnd = state.boardSelectionEnd;
+    selectionSpec.wrap = PrimeFrame::WrapMode::Word;
+    selectionSpec.maxWidth = boardTextWidth;
     selectionSpec.selectionStyle = rectToken(RectRole::Selection);
     selectionSpec.size.preferredWidth = boardTextWidth;
-    selectionSpec.size.preferredHeight = paragraphHeight;
-    paragraphOverlay.createTextSelectionOverlay(selectionSpec);
-
-    paragraphSize.preferredHeight = paragraphHeight;
-    ParagraphSpec paragraphSpec;
-    paragraphSpec.text = state.boardText;
-    paragraphSpec.textStyle = boardTextStyle;
-    paragraphSpec.maxWidth = boardTextWidth;
-    paragraphSpec.size = paragraphSize;
-    paragraphOverlay.createParagraph(paragraphSpec);
+    selectionSpec.callbacks.onSelectionChanged = [&ui](uint32_t, uint32_t) {
+      ui.needsRebuild = true;
+      ui.layoutDirty = true;
+      ui.renderDirty = true;
+    };
+    if (ui.host) {
+      selectionSpec.clipboard.setText = [host = ui.host](std::string_view text) {
+        host->setClipboardText(text);
+      };
+    }
+    boardPanel.createSelectableText(selectionSpec);
 
     StackSpec buttonRowSpec;
     buttonRowSpec.size.preferredWidth = boardTextWidth;
@@ -1431,28 +1386,6 @@ int main(int argc, char** argv) {
     }
   };
   callbacks.onEvents = [&](const EventBatch& batch) {
-    auto markBoardDirty = [&]() {
-      ui.needsRebuild = true;
-      ui.layoutDirty = true;
-      ui.renderDirty = true;
-      markRenderDirty();
-    };
-    auto setBoardFocus = [&](bool focused, std::optional<uint32_t> cursorOverride) {
-      bool focusChanged = state.boardFocused != focused;
-      if (!focusChanged && !cursorOverride.has_value()) {
-        return;
-      }
-      state.boardFocused = focused;
-      if (focused) {
-        uint32_t cursor = cursorOverride.value_or(state.boardSelectionAnchor);
-        cursor = std::min(cursor, static_cast<uint32_t>(state.boardText.size()));
-        clearBoardSelection(state, cursor);
-      } else {
-        state.boardSelecting = false;
-        state.boardPointerId = -1;
-      }
-      markBoardDirty();
-    };
     for (const auto& event : batch.events) {
       if (auto* input = std::get_if<InputEvent>(&event.payload)) {
         if (auto* pointer = std::get_if<PointerEvent>(input)) {
@@ -1486,74 +1419,15 @@ int main(int argc, char** argv) {
           if (searchFocusedBefore != state.searchField.focused && !perfEnabled) {
             setFramePolicy(state.searchField.focused ? FramePolicy::Continuous : baseFramePolicy);
           }
-
-          bool hitBoard = false;
-          if (pointer->phase == PointerPhase::Move ||
-              pointer->phase == PointerPhase::Down ||
-              pointer->phase == PointerPhase::Up) {
-            float px = static_cast<float>(pointer->x);
-            float py = static_cast<float>(pointer->y);
-            hitBoard = ui.boardTextNode.isValid() && pointInNode(ui.layout, ui.boardTextNode, px, py);
-            if (hitBoard != state.boardHover) {
-              state.boardHover = hitBoard;
-            }
-          }
           if (pointer->phase == PointerPhase::Down) {
             if (!handled) {
               if (ui.focus.clearFocus(ui.frame)) {
                 ui.renderDirty = true;
               }
             }
-            if (hitBoard) {
-              const PrimeFrame::LayoutOut* boardOut = ui.layout.get(ui.boardTextNode);
-              float px = static_cast<float>(pointer->x);
-              float py = static_cast<float>(pointer->y);
-              float localX = boardOut ? (px - boardOut->absX) : 0.0f;
-              float localY = boardOut ? (py - boardOut->absY) : 0.0f;
-              uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
-                                                                            textToken(TextRole::SmallMuted),
-                                                                            state.boardText,
-                                                                            ui.boardTextLayout,
-                                                                            0.0f,
-                                                                            localX,
-                                                                            localY);
-              setBoardFocus(true, cursorIndex);
-              state.boardSelecting = true;
-              state.boardPointerId = static_cast<int>(pointer->pointerId);
-              state.boardSelectionAnchor = cursorIndex;
-              state.boardSelectionStart = cursorIndex;
-              state.boardSelectionEnd = cursorIndex;
-              markBoardDirty();
-            } else if (state.boardFocused) {
-              setBoardFocus(false, std::nullopt);
-            }
-          } else if (pointer->phase == PointerPhase::Move) {
-            if (state.boardSelecting &&
-                state.boardPointerId == static_cast<int>(pointer->pointerId) &&
-                (pointer->buttonMask & 0x1u) != 0u) {
-              const PrimeFrame::LayoutOut* boardOut = ui.layout.get(ui.boardTextNode);
-              float px = static_cast<float>(pointer->x);
-              float localX = boardOut ? (px - boardOut->absX) : 0.0f;
-              float localY = boardOut ? (static_cast<float>(pointer->y) - boardOut->absY) : 0.0f;
-              uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
-                                                                            textToken(TextRole::SmallMuted),
-                                                                            state.boardText,
-                                                                            ui.boardTextLayout,
-                                                                            0.0f,
-                                                                            localX,
-                                                                            localY);
-              state.boardSelectionStart = state.boardSelectionAnchor;
-              state.boardSelectionEnd = cursorIndex;
-              markBoardDirty();
-            }
-          } else if (pointer->phase == PointerPhase::Up || pointer->phase == PointerPhase::Cancel) {
-            if (state.boardPointerId == static_cast<int>(pointer->pointerId)) {
-              state.boardSelecting = false;
-              state.boardPointerId = -1;
-            }
           }
 
-          bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardHover;
+          bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardSelection.hovered;
           if (useIBeam != cursorIBeamActive) {
             cursorIBeamActive = useIBeam;
             hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
@@ -1594,30 +1468,6 @@ int main(int argc, char** argv) {
               running = false;
               continue;
             }
-            if (state.boardFocused) {
-              bool isShortcut = (key->modifiers &
-                                 static_cast<KeyModifierMask>(KeyModifier::Super)) != 0u ||
-                                (key->modifiers &
-                                 static_cast<KeyModifierMask>(KeyModifier::Control)) != 0u;
-              if (isShortcut && !key->repeat) {
-                if (key->keyCode == KeyA) {
-                  state.boardSelectionStart = 0u;
-                  state.boardSelectionEnd = static_cast<uint32_t>(state.boardText.size());
-                  markBoardDirty();
-                  continue;
-                }
-                if (key->keyCode == KeyC) {
-                  uint32_t selectionStart = 0u;
-                  uint32_t selectionEnd = 0u;
-                  if (hasBoardSelection(state, selectionStart, selectionEnd)) {
-                    hostPtr->setClipboardText(
-                        std::string_view(state.boardText.data() + selectionStart,
-                                         selectionEnd - selectionStart));
-                  }
-                  continue;
-                }
-              }
-            }
             if (!key->repeat) {
               if (key->keyCode == KeyEscape) {
                 running = false;
@@ -1639,7 +1489,7 @@ int main(int argc, char** argv) {
                 hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
               } else if (key->keyCode == KeyI) {
                 cursorIBeam = !cursorIBeam;
-                bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardHover;
+                bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardSelection.hovered;
                 cursorIBeamActive = useIBeam;
                 hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
               } else if (key->keyCode == KeyC) {
