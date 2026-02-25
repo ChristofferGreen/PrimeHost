@@ -138,6 +138,7 @@ struct DemoUi {
   PrimeFrame::EventRouter router;
   PrimeFrame::FocusManager focus;
   PrimeFrame::NodeId treeViewNode{};
+  PrimeFrame::NodeId searchFieldNode{};
   Host* host = nullptr;
   float cursorX = 0.0f;
   float cursorY = 0.0f;
@@ -149,6 +150,8 @@ struct DemoUi {
   bool layoutDirty = true;
   bool renderDirty = true;
   bool pendingTreeFocus = false;
+  bool pendingSearchFocus = false;
+  int pointerDownCount = 0;
   PrimeFrame::NodeId fpsNode{};
   PrimeFrame::NodeId opacityValueNode{};
   std::chrono::steady_clock::time_point lastResizeEvent{};
@@ -490,6 +493,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.fpsNode = PrimeFrame::NodeId{};
   ui.opacityValueNode = PrimeFrame::NodeId{};
   ui.treeViewNode = PrimeFrame::NodeId{};
+  ui.searchFieldNode = PrimeFrame::NodeId{};
   ui.focus = PrimeFrame::FocusManager{};
   ensureTreeState(state);
   updateOpacityLabel(state);
@@ -614,7 +618,8 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
           return std::string(view.value());
         };
       }
-      row.createTextField(spec);
+      UiNode searchField = row.createTextField(spec);
+      ui.searchFieldNode = searchField.nodeId();
     }
 
     SizeSpec spacer;
@@ -1237,6 +1242,34 @@ int main(int argc, char** argv) {
   auto markRenderDirty = [&]() {
     ui.renderDirty = true;
   };
+  auto captureFocusForRebuild = [&]() {
+    PrimeFrame::NodeId focused = ui.focus.focusedNode();
+    if (focused == ui.treeViewNode) {
+      ui.pendingTreeFocus = true;
+      ui.pendingSearchFocus = false;
+      return;
+    }
+    ui.pendingSearchFocus = (focused == ui.searchFieldNode);
+  };
+  auto applyPendingFocus = [&]() {
+    if (ui.pendingTreeFocus && ui.treeViewNode.isValid()) {
+      ui.pendingTreeFocus = false;
+      auto roots = ui.frame.roots();
+      if (!roots.empty()) {
+        ui.focus.setActiveRoot(ui.frame, ui.layout, roots.back());
+      }
+      ui.focus.setFocus(ui.frame, ui.layout, ui.treeViewNode);
+      return;
+    }
+    if (ui.pendingSearchFocus && ui.searchFieldNode.isValid()) {
+      ui.pendingSearchFocus = false;
+      auto roots = ui.frame.roots();
+      if (!roots.empty()) {
+        ui.focus.setActiveRoot(ui.frame, ui.layout, roots.back());
+      }
+      ui.focus.setFocus(ui.frame, ui.layout, ui.searchFieldNode);
+    }
+  };
   Callbacks callbacks{};
   callbacks.onFrame = [&](SurfaceId id, const FrameTiming&, const FrameDiagnostics&) {
     auto now = std::chrono::steady_clock::now();
@@ -1278,10 +1311,13 @@ int main(int argc, char** argv) {
     }
 
     if (ui.needsRebuild) {
-      ui.router.clearAllCaptures();
-      buildStudioUi(ui, state);
-      ui.needsRebuild = false;
-      ui.layoutDirty = true;
+      if (ui.pointerDownCount == 0) {
+        captureFocusForRebuild();
+        ui.router.clearAllCaptures();
+        buildStudioUi(ui, state);
+        ui.needsRebuild = false;
+        ui.layoutDirty = true;
+      }
     }
 
     if (ui.layoutDirty) {
@@ -1303,16 +1339,7 @@ int main(int argc, char** argv) {
       ui.layoutDirty = false;
     }
 
-    if (ui.pendingTreeFocus) {
-      ui.pendingTreeFocus = false;
-      if (ui.treeViewNode.isValid()) {
-        auto roots = ui.frame.roots();
-        if (!roots.empty()) {
-          ui.focus.setActiveRoot(ui.frame, ui.layout, roots.back());
-        }
-        ui.focus.setFocus(ui.frame, ui.layout, ui.treeViewNode);
-      }
-    }
+    applyPendingFocus();
 
     if (reportFps) {
       if (ui.fpsNode.isValid()) {
@@ -1389,6 +1416,11 @@ int main(int argc, char** argv) {
     for (const auto& event : batch.events) {
       if (auto* input = std::get_if<InputEvent>(&event.payload)) {
         if (auto* pointer = std::get_if<PointerEvent>(input)) {
+          if (pointer->phase == PointerPhase::Down) {
+            ui.pointerDownCount++;
+          } else if (pointer->phase == PointerPhase::Up || pointer->phase == PointerPhase::Cancel) {
+            ui.pointerDownCount = std::max(0, ui.pointerDownCount - 1);
+          }
           ui.cursorX = static_cast<float>(pointer->x);
           ui.cursorY = static_cast<float>(pointer->y);
           if (!suppressEventLogs && pointer->phase != PointerPhase::Move) {
@@ -1396,7 +1428,8 @@ int main(int argc, char** argv) {
                       << " type=" << pointerTypeLabel(pointer->deviceType)
                       << " x=" << pointer->x << " y=" << pointer->y << "\n";
           }
-          if (ui.needsRebuild) {
+          if (ui.needsRebuild && ui.pointerDownCount == 0) {
+            captureFocusForRebuild();
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
             ui.layoutDirty = true;
@@ -1409,6 +1442,7 @@ int main(int argc, char** argv) {
             ui.layoutEngine.layout(ui.frame, ui.layout, options);
             ui.layoutDirty = false;
           }
+          applyPendingFocus();
           bool searchFocusedBefore = state.searchField.focused;
           PrimeFrame::Event pfEvent = toPrimeFrameEvent(*pointer);
           bool handled = ui.router.dispatch(pfEvent, ui.frame, ui.layout, &ui.focus);
@@ -1435,7 +1469,8 @@ int main(int argc, char** argv) {
             hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
-          if (ui.needsRebuild) {
+          if (ui.needsRebuild && ui.pointerDownCount == 0) {
+            captureFocusForRebuild();
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
             ui.layoutDirty = true;
@@ -1448,6 +1483,7 @@ int main(int argc, char** argv) {
             ui.layoutEngine.layout(ui.frame, ui.layout, options);
             ui.layoutDirty = false;
           }
+          applyPendingFocus();
           PrimeFrame::Event keyEvent = toPrimeFrameEvent(*key);
           bool searchFocusedBefore = state.searchField.focused;
           bool handled = ui.router.dispatch(keyEvent, ui.frame, ui.layout, &ui.focus);
@@ -1526,7 +1562,8 @@ int main(int argc, char** argv) {
         } else if (auto* text = std::get_if<TextEvent>(input)) {
           auto view = textFromSpan(batch, text->text);
           if (view) {
-            if (ui.needsRebuild) {
+            if (ui.needsRebuild && ui.pointerDownCount == 0) {
+              captureFocusForRebuild();
               buildStudioUi(ui, state);
               ui.needsRebuild = false;
               ui.layoutDirty = true;
@@ -1539,6 +1576,7 @@ int main(int argc, char** argv) {
               ui.layoutEngine.layout(ui.frame, ui.layout, options);
               ui.layoutDirty = false;
             }
+            applyPendingFocus();
             PrimeFrame::Event textEvent;
             textEvent.type = PrimeFrame::EventType::TextInput;
             textEvent.text = std::string(*view);
@@ -1556,7 +1594,8 @@ int main(int argc, char** argv) {
             std::cout << "scroll dx=" << scroll->deltaX << " dy=" << scroll->deltaY
                       << (scroll->isLines ? " lines" : " px") << "\n";
           }
-          if (ui.needsRebuild) {
+          if (ui.needsRebuild && ui.pointerDownCount == 0) {
+            captureFocusForRebuild();
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
             ui.layoutDirty = true;
@@ -1569,6 +1608,7 @@ int main(int argc, char** argv) {
             ui.layoutEngine.layout(ui.frame, ui.layout, options);
             ui.layoutDirty = false;
           }
+          applyPendingFocus();
           PrimeFrame::Event scrollEvent;
           scrollEvent.type = PrimeFrame::EventType::PointerScroll;
           scrollEvent.x = ui.cursorX;
