@@ -124,6 +124,7 @@ if(PRIMEHOST_BUILD_TESTS)
     tests/unit/test_event_buffer.cpp
     tests/unit/test_event_payload.cpp
     tests/unit/test_event_defaults.cpp
+    tests/unit/test_key_mapping.mm
     tests/unit/test_screenshot.cpp
     tests/unit/test_app_paths.cpp
     tests/unit/test_file_dialogs.cpp
