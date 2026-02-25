@@ -146,6 +146,7 @@ struct DemoUi {
   float logicalHeight = 0.0f;
   float scale = 1.0f;
   float scrollLineHeight = 24.0f;
+  float focusPulse = 0.0f;
   bool needsRebuild = true;
   bool layoutDirty = true;
   bool renderDirty = true;
@@ -157,6 +158,7 @@ struct DemoUi {
   std::chrono::steady_clock::time_point lastResizeEvent{};
   std::chrono::steady_clock::time_point lastResizeLog{};
   std::chrono::steady_clock::time_point lastSlowLog{};
+  std::chrono::steady_clock::time_point nextFocusPulse{};
 };
 
 struct DemoState {
@@ -521,6 +523,9 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   state.boardSelection.selectionEnd =
       std::min(state.boardSelection.selectionEnd,
                static_cast<uint32_t>(state.boardText.size()));
+  auto focusPulseOpacity = [&](float base, float amplitude) {
+    return base + amplitude * ui.focusPulse;
+  };
 
   SizeSpec shellSize;
   shellSize.preferredWidth = ui.logicalWidth;
@@ -579,7 +584,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
       }
       spec.backgroundStyle = rectToken(RectRole::Panel);
       spec.focusStyle = rectToken(RectRole::Accent);
-      spec.focusStyleOverride.opacity = 0.22f;
+      spec.focusStyleOverride.opacity = focusPulseOpacity(0.2f, 0.15f);
       spec.textStyle = textToken(TextRole::BodyBright);
       spec.placeholderStyle = textToken(TextRole::BodyMuted);
       spec.cursorStyle = rectToken(RectRole::Accent);
@@ -706,6 +711,8 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     treeSpec.base.scrollBar.thumbHoverOpacity = 0.9f;
     treeSpec.base.scrollBar.trackPressedOpacity = 0.35f;
     treeSpec.base.scrollBar.thumbPressedOpacity = 0.6f;
+    treeSpec.base.focusStyle = rectToken(RectRole::Accent);
+    treeSpec.base.focusStyleOverride.opacity = focusPulseOpacity(0.18f, 0.12f);
     treeSpec.rowRole = RectRole::PanelAlt;
     treeSpec.rowAltRole = RectRole::Panel;
     treeSpec.hoverRole = RectRole::PanelStrong;
@@ -995,7 +1002,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     opacitySlider.fillStyle = rectToken(RectRole::Accent);
     opacitySlider.thumbStyle = rectToken(RectRole::PanelAlt);
     opacitySlider.focusStyle = rectToken(RectRole::Accent);
-    opacitySlider.focusStyleOverride.opacity = 0.18f;
+    opacitySlider.focusStyleOverride.opacity = focusPulseOpacity(0.18f, 0.12f);
     opacitySlider.trackStyleOverride.opacity = 0.55f;
     opacitySlider.trackHoverOpacity = 0.65f;
     opacitySlider.trackPressedOpacity = 0.6f;
@@ -1277,6 +1284,25 @@ int main(int argc, char** argv) {
       ui.needsRebuild = true;
       ui.renderDirty = true;
     }
+    bool focusActive = ui.focus.focusedNode().isValid();
+    if (focusActive) {
+      constexpr auto FocusPulsePeriod = std::chrono::milliseconds(1400);
+      constexpr auto FocusPulseStep = std::chrono::milliseconds(50);
+      if (ui.nextFocusPulse.time_since_epoch().count() == 0 || now >= ui.nextFocusPulse) {
+        ui.nextFocusPulse = now + FocusPulseStep;
+        constexpr double TwoPi = 6.283185307179586;
+        double seconds = std::chrono::duration<double>(now.time_since_epoch()).count();
+        double period = std::chrono::duration<double>(FocusPulsePeriod).count();
+        float pulse = static_cast<float>(0.5 + 0.5 * std::sin(seconds * TwoPi / period));
+        if (std::abs(pulse - ui.focusPulse) > 0.01f) {
+          ui.focusPulse = pulse;
+          ui.needsRebuild = true;
+          ui.renderDirty = true;
+        }
+      }
+    } else if (ui.focusPulse != 0.0f) {
+      ui.focusPulse = 0.0f;
+    }
     bool reportFps = !perfEnabled && fps.shouldReport() && fps.sampleCount() > 0u;
     FpsStats fpsStats{};
     if (reportFps) {
@@ -1450,15 +1476,16 @@ int main(int argc, char** argv) {
             ui.layoutDirty = false;
           }
           applyPendingFocus();
-          bool searchFocusedBefore = state.searchField.focused;
+          bool focusActiveBefore = ui.focus.focusedNode().isValid();
           PrimeFrame::Event pfEvent = toPrimeFrameEvent(*pointer);
           bool handled = ui.router.dispatch(pfEvent, ui.frame, ui.layout, &ui.focus);
           if (handled) {
             ui.renderDirty = true;
             markRenderDirty();
           }
-          if (searchFocusedBefore != state.searchField.focused && !perfEnabled) {
-            setFramePolicy(state.searchField.focused ? FramePolicy::Continuous : baseFramePolicy);
+          bool focusActiveAfter = ui.focus.focusedNode().isValid();
+          if (focusActiveBefore != focusActiveAfter && !perfEnabled) {
+            setFramePolicy(focusActiveAfter ? FramePolicy::Continuous : baseFramePolicy);
           }
           if (pointer->phase == PointerPhase::Down) {
             if (!handled) {
@@ -1495,14 +1522,15 @@ int main(int argc, char** argv) {
           }
           applyPendingFocus();
           PrimeFrame::Event keyEvent = toPrimeFrameEvent(*key);
-          bool searchFocusedBefore = state.searchField.focused;
+          bool focusActiveBefore = ui.focus.focusedNode().isValid();
           bool handled = ui.router.dispatch(keyEvent, ui.frame, ui.layout, &ui.focus);
           if (handled) {
             ui.renderDirty = true;
             markRenderDirty();
           }
-          if (searchFocusedBefore != state.searchField.focused && !perfEnabled) {
-            setFramePolicy(state.searchField.focused ? FramePolicy::Continuous : baseFramePolicy);
+          bool focusActiveAfter = ui.focus.focusedNode().isValid();
+          if (focusActiveBefore != focusActiveAfter && !perfEnabled) {
+            setFramePolicy(focusActiveAfter ? FramePolicy::Continuous : baseFramePolicy);
           }
           if (handled) {
             continue;
