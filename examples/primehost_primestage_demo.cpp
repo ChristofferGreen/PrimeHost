@@ -1311,9 +1311,13 @@ int main(int argc, char** argv) {
     }
 
     if (ui.needsRebuild) {
-      if (ui.pointerDownCount == 0) {
+      bool allowDuringPointer =
+          state.searchField.selecting || state.boardSelection.selecting;
+      if (ui.pointerDownCount == 0 || allowDuringPointer) {
         captureFocusForRebuild();
-        ui.router.clearAllCaptures();
+        if (ui.pointerDownCount == 0) {
+          ui.router.clearAllCaptures();
+        }
         buildStudioUi(ui, state);
         ui.needsRebuild = false;
         ui.layoutDirty = true;
@@ -1428,7 +1432,10 @@ int main(int argc, char** argv) {
                       << " type=" << pointerTypeLabel(pointer->deviceType)
                       << " x=" << pointer->x << " y=" << pointer->y << "\n";
           }
-          if (ui.needsRebuild && ui.pointerDownCount == 0) {
+          if (ui.needsRebuild &&
+              (ui.pointerDownCount == 0 ||
+               state.searchField.selecting ||
+               state.boardSelection.selecting)) {
             captureFocusForRebuild();
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
@@ -1469,7 +1476,10 @@ int main(int argc, char** argv) {
             hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
-          if (ui.needsRebuild && ui.pointerDownCount == 0) {
+          if (ui.needsRebuild &&
+              (ui.pointerDownCount == 0 ||
+               state.searchField.selecting ||
+               state.boardSelection.selecting)) {
             captureFocusForRebuild();
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
@@ -1562,7 +1572,10 @@ int main(int argc, char** argv) {
         } else if (auto* text = std::get_if<TextEvent>(input)) {
           auto view = textFromSpan(batch, text->text);
           if (view) {
-            if (ui.needsRebuild && ui.pointerDownCount == 0) {
+            if (ui.needsRebuild &&
+                (ui.pointerDownCount == 0 ||
+                 state.searchField.selecting ||
+                 state.boardSelection.selecting)) {
               captureFocusForRebuild();
               buildStudioUi(ui, state);
               ui.needsRebuild = false;
@@ -1594,7 +1607,10 @@ int main(int argc, char** argv) {
             std::cout << "scroll dx=" << scroll->deltaX << " dy=" << scroll->deltaY
                       << (scroll->isLines ? " lines" : " px") << "\n";
           }
-          if (ui.needsRebuild && ui.pointerDownCount == 0) {
+          if (ui.needsRebuild &&
+              (ui.pointerDownCount == 0 ||
+               state.searchField.selecting ||
+               state.boardSelection.selecting)) {
             captureFocusForRebuild();
             buildStudioUi(ui, state);
             ui.needsRebuild = false;
