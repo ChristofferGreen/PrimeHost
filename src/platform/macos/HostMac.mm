@@ -4089,7 +4089,30 @@ void HostMac::handleScroll(uint64_t surfaceId, NSEvent* event) {
 }
 
 void HostMac::handleKey(NSEvent* event, bool pressed, bool repeat) {
-  uint32_t hid = map_mac_keycode(static_cast<uint16_t>(event.keyCode));
+  uint16_t keyCode = static_cast<uint16_t>(event.keyCode);
+  if (event.modifierFlags & NSEventModifierFlagFunction) {
+    NSString* chars = event.charactersIgnoringModifiers;
+    if (chars.length == 1) {
+      unichar keyChar = [chars characterAtIndex:0];
+      switch (keyChar) {
+        case NSPageUpFunctionKey:
+          keyCode = kVK_PageUp;
+          break;
+        case NSPageDownFunctionKey:
+          keyCode = kVK_PageDown;
+          break;
+        case NSHomeFunctionKey:
+          keyCode = kVK_Home;
+          break;
+        case NSEndFunctionKey:
+          keyCode = kVK_End;
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  uint32_t hid = map_mac_keycode(keyCode);
   if (hid == 0u) {
     return;
   }
