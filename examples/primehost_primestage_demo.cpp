@@ -1427,7 +1427,9 @@ int main(int argc, char** argv) {
             }
           }
 
-          bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardSelection.hovered;
+          bool useIBeam = cursorIBeam ||
+                          state.searchField.cursorHint == CursorHint::IBeam ||
+                          state.boardSelection.cursorHint == CursorHint::IBeam;
           if (useIBeam != cursorIBeamActive) {
             cursorIBeamActive = useIBeam;
             hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
@@ -1489,7 +1491,9 @@ int main(int argc, char** argv) {
                 hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
               } else if (key->keyCode == KeyI) {
                 cursorIBeam = !cursorIBeam;
-                bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardSelection.hovered;
+                bool useIBeam = cursorIBeam ||
+                                state.searchField.cursorHint == CursorHint::IBeam ||
+                                state.boardSelection.cursorHint == CursorHint::IBeam;
                 cursorIBeamActive = useIBeam;
                 hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
               } else if (key->keyCode == KeyC) {
