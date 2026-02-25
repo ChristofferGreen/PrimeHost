@@ -31,18 +31,8 @@ using namespace PrimeStage::Studio;
 namespace {
 
 constexpr uint32_t KeyEscape = 0x29u;
-constexpr uint32_t KeyReturn = 0x28u;
-constexpr uint32_t KeyBackspace = 0x2Au;
-constexpr uint32_t KeyTab = 0x2Bu;
 constexpr uint32_t KeyA = 0x04u;
 constexpr uint32_t KeyQ = 0x14u;
-constexpr uint32_t KeyDelete = 0x4Cu;
-constexpr uint32_t KeyEnd = 0x4Du;
-constexpr uint32_t KeyRight = 0x4Fu;
-constexpr uint32_t KeyLeft = 0x50u;
-constexpr uint32_t KeyDown = 0x51u;
-constexpr uint32_t KeyUp = 0x52u;
-constexpr uint32_t KeyHome = 0x4Au;
 constexpr uint32_t KeyF = 0x09u;
 constexpr uint32_t KeyM = 0x10u;
 constexpr uint32_t KeyX = 0x1Bu;
@@ -149,9 +139,9 @@ struct DemoUi {
   PrimeFrame::EventRouter router;
   PrimeFrame::FocusManager focus;
   PrimeFrame::NodeId treeViewNode{};
-  PrimeFrame::NodeId searchFieldNode{};
   PrimeFrame::NodeId boardTextNode{};
   PrimeStage::TextSelectionLayout boardTextLayout{};
+  Host* host = nullptr;
   float cursorX = 0.0f;
   float cursorY = 0.0f;
   float logicalWidth = 0.0f;
@@ -173,17 +163,7 @@ struct DemoState {
   std::vector<PrimeStage::TreeNode> treeNodes;
   float opacity = 0.85f;
   std::string opacityLabel;
-  std::string searchText;
-  uint32_t searchCursor = 0u;
-  bool searchFocused = false;
-  bool searchHover = false;
-  bool searchCursorVisible = false;
-  bool searchSelecting = false;
-  uint32_t searchSelectionAnchor = 0u;
-  uint32_t searchSelectionStart = 0u;
-  uint32_t searchSelectionEnd = 0u;
-  int searchPointerId = -1;
-  std::chrono::steady_clock::time_point nextSearchBlink{};
+  PrimeStage::TextFieldState searchField;
   std::string boardText;
   bool boardFocused = false;
   bool boardHover = false;
@@ -522,20 +502,6 @@ bool pointInNode(const PrimeFrame::LayoutOutput& layout, PrimeFrame::NodeId node
   return x >= out->absX && y >= out->absY && x <= (out->absX + out->absW) && y <= (out->absY + out->absH);
 }
 
-bool hasSearchSelection(const DemoState& state, uint32_t& start, uint32_t& end) {
-  start = std::min(state.searchSelectionStart, state.searchSelectionEnd);
-  end = std::max(state.searchSelectionStart, state.searchSelectionEnd);
-  return start != end;
-}
-
-void clearSearchSelection(DemoState& state, uint32_t cursor) {
-  state.searchSelectionAnchor = cursor;
-  state.searchSelectionStart = cursor;
-  state.searchSelectionEnd = cursor;
-  state.searchSelecting = false;
-  state.searchPointerId = -1;
-}
-
 bool hasBoardSelection(const DemoState& state, uint32_t& start, uint32_t& end) {
   start = std::min(state.boardSelectionStart, state.boardSelectionEnd);
   end = std::max(state.boardSelectionStart, state.boardSelectionEnd);
@@ -555,19 +521,19 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
   ui.fpsNode = PrimeFrame::NodeId{};
   ui.opacityValueNode = PrimeFrame::NodeId{};
   ui.treeViewNode = PrimeFrame::NodeId{};
-  ui.searchFieldNode = PrimeFrame::NodeId{};
   ui.boardTextNode = PrimeFrame::NodeId{};
   ui.boardTextLayout = {};
   ui.focus = PrimeFrame::FocusManager{};
   ensureTreeState(state);
   updateOpacityLabel(state);
-  state.searchCursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
-  state.searchSelectionStart = std::min(state.searchSelectionStart,
-                                        static_cast<uint32_t>(state.searchText.size()));
-  state.searchSelectionEnd = std::min(state.searchSelectionEnd,
-                                      static_cast<uint32_t>(state.searchText.size()));
-  state.searchSelectionAnchor = std::min(state.searchSelectionAnchor,
-                                         static_cast<uint32_t>(state.searchText.size()));
+  state.searchField.cursor = std::min(state.searchField.cursor,
+                                      static_cast<uint32_t>(state.searchField.text.size()));
+  state.searchField.selectionAnchor = std::min(state.searchField.selectionAnchor,
+                                               static_cast<uint32_t>(state.searchField.text.size()));
+  state.searchField.selectionStart = std::min(state.searchField.selectionStart,
+                                              static_cast<uint32_t>(state.searchField.text.size()));
+  state.searchField.selectionEnd = std::min(state.searchField.selectionEnd,
+                                            static_cast<uint32_t>(state.searchField.text.size()));
   if (state.boardText.empty()) {
     std::string base =
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
@@ -628,7 +594,7 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     row.createSpacer(fixed(StudioDefaults::PanelInset, StudioDefaults::ControlHeight));
     {
       TextFieldSpec spec;
-      spec.text = state.searchText;
+      spec.state = &state.searchField;
       spec.placeholder = "Search...";
       spec.size = {};
       if (!spec.size.preferredHeight.has_value() && spec.size.stretchY <= 0.0f) {
@@ -638,17 +604,47 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
         spec.size.minWidth = StudioDefaults::FieldWidthL;
       }
       spec.backgroundStyle = rectToken(RectRole::Panel);
+      spec.focusStyle = rectToken(RectRole::Accent);
+      spec.focusStyleOverride.opacity = 0.22f;
       spec.textStyle = textToken(TextRole::BodyBright);
       spec.placeholderStyle = textToken(TextRole::BodyMuted);
-      spec.showCursor = state.searchFocused && state.searchCursorVisible;
-      spec.cursorIndex = state.searchCursor;
       spec.cursorStyle = rectToken(RectRole::Accent);
       spec.cursorWidth = 2.0f;
-      spec.selectionStart = state.searchSelectionStart;
-      spec.selectionEnd = state.searchSelectionEnd;
       spec.selectionStyle = rectToken(RectRole::Selection);
-      UiNode searchField = row.createTextField(spec);
-      ui.searchFieldNode = searchField.nodeId();
+      spec.cursorBlinkInterval = SearchBlinkInterval;
+      spec.callbacks.onStateChanged = [&ui]() {
+        ui.needsRebuild = true;
+        ui.layoutDirty = true;
+        ui.renderDirty = true;
+      };
+      spec.callbacks.onTextChanged = [&ui](std::string_view) {
+        ui.needsRebuild = true;
+        ui.layoutDirty = true;
+        ui.renderDirty = true;
+      };
+      spec.callbacks.onRequestBlur = [&ui]() {
+        if (ui.focus.clearFocus(ui.frame)) {
+          ui.renderDirty = true;
+        }
+      };
+      if (ui.host) {
+        spec.clipboard.setText = [host = ui.host](std::string_view text) {
+          host->setClipboardText(text);
+        };
+        spec.clipboard.getText = [host = ui.host]() -> std::string {
+          auto size = host->clipboardTextSize();
+          if (!size || size.value() == 0u) {
+            return {};
+          }
+          std::vector<char> buffer(size.value());
+          auto view = host->clipboardText(buffer);
+          if (!view) {
+            return {};
+          }
+          return std::string(view.value());
+        };
+      }
+      row.createTextField(spec);
     }
 
     SizeSpec spacer;
@@ -729,8 +725,12 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     treeSpec.base.linkEndInset = 0.0f;
     treeSpec.base.selectionAccentWidth = 2.0f;
     treeSpec.base.scrollBar.thumbProgress = state.treeScrollProgress;
-    treeSpec.base.scrollBar.trackHoverOpacity = 0.7f;
+    treeSpec.base.scrollBar.trackStyleOverride.opacity = 0.45f;
+    treeSpec.base.scrollBar.thumbStyleOverride.opacity = 0.75f;
+    treeSpec.base.scrollBar.trackHoverOpacity = 0.6f;
     treeSpec.base.scrollBar.thumbHoverOpacity = 0.9f;
+    treeSpec.base.scrollBar.trackPressedOpacity = 0.35f;
+    treeSpec.base.scrollBar.thumbPressedOpacity = 0.6f;
     treeSpec.rowRole = RectRole::PanelAlt;
     treeSpec.rowAltRole = RectRole::Panel;
     treeSpec.hoverRole = RectRole::PanelStrong;
@@ -1034,6 +1034,8 @@ void buildStudioUi(DemoUi& ui, DemoState& state) {
     opacitySlider.trackStyle = rectToken(RectRole::PanelStrong);
     opacitySlider.fillStyle = rectToken(RectRole::Accent);
     opacitySlider.thumbStyle = rectToken(RectRole::PanelAlt);
+    opacitySlider.focusStyle = rectToken(RectRole::Accent);
+    opacitySlider.focusStyleOverride.opacity = 0.18f;
     opacitySlider.trackStyleOverride.opacity = 0.55f;
     opacitySlider.trackHoverOpacity = 0.65f;
     opacitySlider.trackPressedOpacity = 0.6f;
@@ -1253,6 +1255,7 @@ int main(int argc, char** argv) {
 
   DemoState state{};
   DemoUi ui{};
+  ui.host = host.get();
   ui.logicalWidth = static_cast<float>(config.width);
   ui.logicalHeight = static_cast<float>(config.height);
   ui.scale = 1.0f;
@@ -1265,6 +1268,7 @@ int main(int argc, char** argv) {
   bool maximized = false;
   bool relativePointer = false;
   bool cursorIBeam = false;
+  bool cursorIBeamActive = false;
   bool suppressEventLogs = perfEnabled;
 
   Host* hostPtr = host.get();
@@ -1281,23 +1285,7 @@ int main(int argc, char** argv) {
   Callbacks callbacks{};
   callbacks.onFrame = [&](SurfaceId id, const FrameTiming&, const FrameDiagnostics&) {
     auto now = std::chrono::steady_clock::now();
-    bool blinkChanged = false;
-    if (state.searchFocused) {
-      if (state.nextSearchBlink.time_since_epoch().count() == 0) {
-        state.searchCursorVisible = true;
-        state.nextSearchBlink = now + SearchBlinkInterval;
-        blinkChanged = true;
-      } else if (now >= state.nextSearchBlink) {
-        state.searchCursorVisible = !state.searchCursorVisible;
-        state.nextSearchBlink = now + SearchBlinkInterval;
-        blinkChanged = true;
-      }
-    } else if (state.searchCursorVisible || state.nextSearchBlink.time_since_epoch().count() != 0) {
-      state.searchCursorVisible = false;
-      state.nextSearchBlink = {};
-      blinkChanged = true;
-    }
-    if (blinkChanged) {
+    if (PrimeStage::updateTextFieldBlink(state.searchField, now, SearchBlinkInterval)) {
       ui.needsRebuild = true;
       ui.renderDirty = true;
     }
@@ -1443,48 +1431,11 @@ int main(int argc, char** argv) {
     }
   };
   callbacks.onEvents = [&](const EventBatch& batch) {
-    auto now = std::chrono::steady_clock::now();
-    auto markSearchDirty = [&]() {
-      ui.needsRebuild = true;
-      ui.layoutDirty = true;
-      ui.renderDirty = true;
-      markRenderDirty();
-    };
     auto markBoardDirty = [&]() {
       ui.needsRebuild = true;
       ui.layoutDirty = true;
       ui.renderDirty = true;
       markRenderDirty();
-    };
-    auto resetSearchBlink = [&]() {
-      state.searchCursorVisible = true;
-      state.nextSearchBlink = now + SearchBlinkInterval;
-    };
-    auto setSearchFocus = [&](bool focused, std::optional<uint32_t> cursorOverride) {
-      bool focusChanged = state.searchFocused != focused;
-      if (!focusChanged && !cursorOverride.has_value()) {
-        return;
-      }
-      state.searchFocused = focused;
-      if (focused) {
-        if (cursorOverride.has_value()) {
-          state.searchCursor = std::min(cursorOverride.value(),
-                                        static_cast<uint32_t>(state.searchText.size()));
-        } else if (focusChanged) {
-          state.searchCursor = static_cast<uint32_t>(state.searchText.size());
-        }
-        clearSearchSelection(state, state.searchCursor);
-        resetSearchBlink();
-      } else {
-        state.searchCursorVisible = false;
-        state.nextSearchBlink = {};
-        state.searchSelecting = false;
-        state.searchPointerId = -1;
-      }
-      markSearchDirty();
-      if (focusChanged && !perfEnabled) {
-        setFramePolicy(focused ? FramePolicy::Continuous : baseFramePolicy);
-      }
     };
     auto setBoardFocus = [&](bool focused, std::optional<uint32_t> cursorOverride) {
       bool focusChanged = state.boardFocused != focused;
@@ -1525,52 +1476,38 @@ int main(int argc, char** argv) {
             ui.layoutEngine.layout(ui.frame, ui.layout, options);
             ui.layoutDirty = false;
           }
+          bool searchFocusedBefore = state.searchField.focused;
           PrimeFrame::Event pfEvent = toPrimeFrameEvent(*pointer);
           bool handled = ui.router.dispatch(pfEvent, ui.frame, ui.layout, &ui.focus);
           if (handled) {
             ui.renderDirty = true;
             markRenderDirty();
           }
+          if (searchFocusedBefore != state.searchField.focused && !perfEnabled) {
+            setFramePolicy(state.searchField.focused ? FramePolicy::Continuous : baseFramePolicy);
+          }
 
-          bool hitSearch = false;
           bool hitBoard = false;
           if (pointer->phase == PointerPhase::Move ||
               pointer->phase == PointerPhase::Down ||
               pointer->phase == PointerPhase::Up) {
             float px = static_cast<float>(pointer->x);
             float py = static_cast<float>(pointer->y);
-            hitSearch = ui.searchFieldNode.isValid() && pointInNode(ui.layout, ui.searchFieldNode, px, py);
             hitBoard = ui.boardTextNode.isValid() && pointInNode(ui.layout, ui.boardTextNode, px, py);
-            if (hitSearch != state.searchHover || hitBoard != state.boardHover) {
-              state.searchHover = hitSearch;
+            if (hitBoard != state.boardHover) {
               state.boardHover = hitBoard;
-              bool useIBeam = hitSearch || hitBoard || cursorIBeam;
-              hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
             }
           }
           if (pointer->phase == PointerPhase::Down) {
-            float px = static_cast<float>(pointer->x);
-            float py = static_cast<float>(pointer->y);
-            if (hitSearch) {
-              const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
-              float localX = searchOut ? (px - searchOut->absX) : 0.0f;
-              uint32_t cursorIndex = PrimeStage::caretIndexForClick(ui.frame,
-                                                                    textToken(TextRole::BodyBright),
-                                                                    state.searchText,
-                                                                    16.0f,
-                                                                    localX);
-              setSearchFocus(true, cursorIndex);
-              state.searchSelecting = true;
-              state.searchPointerId = static_cast<int>(pointer->pointerId);
-              state.searchSelectionAnchor = cursorIndex;
-              state.searchSelectionStart = cursorIndex;
-              state.searchSelectionEnd = cursorIndex;
-              state.searchCursor = cursorIndex;
-              markSearchDirty();
-              setBoardFocus(false, std::nullopt);
-            } else if (hitBoard) {
-              setSearchFocus(false, std::nullopt);
+            if (!handled) {
+              if (ui.focus.clearFocus(ui.frame)) {
+                ui.renderDirty = true;
+              }
+            }
+            if (hitBoard) {
               const PrimeFrame::LayoutOut* boardOut = ui.layout.get(ui.boardTextNode);
+              float px = static_cast<float>(pointer->x);
+              float py = static_cast<float>(pointer->y);
               float localX = boardOut ? (px - boardOut->absX) : 0.0f;
               float localY = boardOut ? (py - boardOut->absY) : 0.0f;
               uint32_t cursorIndex = PrimeStage::caretIndexForClickInLayout(ui.frame,
@@ -1587,30 +1524,10 @@ int main(int argc, char** argv) {
               state.boardSelectionStart = cursorIndex;
               state.boardSelectionEnd = cursorIndex;
               markBoardDirty();
-            } else if (state.searchFocused) {
-              setSearchFocus(false, std::nullopt);
-              setBoardFocus(false, std::nullopt);
             } else if (state.boardFocused) {
               setBoardFocus(false, std::nullopt);
             }
           } else if (pointer->phase == PointerPhase::Move) {
-            if (state.searchSelecting &&
-                state.searchPointerId == static_cast<int>(pointer->pointerId) &&
-                (pointer->buttonMask & 0x1u) != 0u) {
-              const PrimeFrame::LayoutOut* searchOut = ui.layout.get(ui.searchFieldNode);
-              float px = static_cast<float>(pointer->x);
-              float localX = searchOut ? (px - searchOut->absX) : 0.0f;
-              uint32_t cursorIndex = PrimeStage::caretIndexForClick(ui.frame,
-                                                                    textToken(TextRole::BodyBright),
-                                                                    state.searchText,
-                                                                    16.0f,
-                                                                    localX);
-              state.searchCursor = cursorIndex;
-              state.searchSelectionStart = state.searchSelectionAnchor;
-              state.searchSelectionEnd = cursorIndex;
-              resetSearchBlink();
-              markSearchDirty();
-            }
             if (state.boardSelecting &&
                 state.boardPointerId == static_cast<int>(pointer->pointerId) &&
                 (pointer->buttonMask & 0x1u) != 0u) {
@@ -1630,14 +1547,16 @@ int main(int argc, char** argv) {
               markBoardDirty();
             }
           } else if (pointer->phase == PointerPhase::Up || pointer->phase == PointerPhase::Cancel) {
-            if (state.searchPointerId == static_cast<int>(pointer->pointerId)) {
-              state.searchSelecting = false;
-              state.searchPointerId = -1;
-            }
             if (state.boardPointerId == static_cast<int>(pointer->pointerId)) {
               state.boardSelecting = false;
               state.boardPointerId = -1;
             }
+          }
+
+          bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardHover;
+          if (useIBeam != cursorIBeamActive) {
+            cursorIBeamActive = useIBeam;
+            hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
           }
         } else if (auto* key = std::get_if<KeyEvent>(input)) {
           if (ui.needsRebuild) {
@@ -1654,10 +1573,16 @@ int main(int argc, char** argv) {
             ui.layoutDirty = false;
           }
           PrimeFrame::Event keyEvent = toPrimeFrameEvent(*key);
+          bool searchFocusedBefore = state.searchField.focused;
           bool handled = ui.router.dispatch(keyEvent, ui.frame, ui.layout, &ui.focus);
           if (handled) {
             ui.renderDirty = true;
             markRenderDirty();
+          }
+          if (searchFocusedBefore != state.searchField.focused && !perfEnabled) {
+            setFramePolicy(state.searchField.focused ? FramePolicy::Continuous : baseFramePolicy);
+          }
+          if (handled) {
             continue;
           }
           if (key->pressed) {
@@ -1667,178 +1592,6 @@ int main(int argc, char** argv) {
                                  static_cast<KeyModifierMask>(KeyModifier::Super)) != 0u;
             if ((altPressed || superPressed) && key->keyCode == KeyQ && !key->repeat) {
               running = false;
-              continue;
-            }
-            if (state.searchFocused) {
-              bool hasSelection = false;
-              uint32_t selectionStart = 0u;
-              uint32_t selectionEnd = 0u;
-              hasSelection = hasSearchSelection(state, selectionStart, selectionEnd);
-              auto deleteSelection = [&]() -> bool {
-                if (!hasSelection) {
-                  return false;
-                }
-                state.searchText.erase(selectionStart, selectionEnd - selectionStart);
-                state.searchCursor = selectionStart;
-                clearSearchSelection(state, state.searchCursor);
-                return true;
-              };
-              bool isShortcut = (key->modifiers &
-                                 static_cast<KeyModifierMask>(KeyModifier::Super)) != 0u ||
-                                (key->modifiers &
-                                 static_cast<KeyModifierMask>(KeyModifier::Control)) != 0u;
-              bool shiftPressed = (key->modifiers &
-                                   static_cast<KeyModifierMask>(KeyModifier::Shift)) != 0u;
-              if (isShortcut && !key->repeat) {
-                if (key->keyCode == KeyA) {
-                  state.searchSelectionStart = 0u;
-                  state.searchSelectionEnd = static_cast<uint32_t>(state.searchText.size());
-                  state.searchCursor = state.searchSelectionEnd;
-                  resetSearchBlink();
-                  markSearchDirty();
-                  continue;
-                }
-                if (key->keyCode == KeyC) {
-                  if (hasSelection) {
-                    hostPtr->setClipboardText(
-                        std::string_view(state.searchText.data() + selectionStart,
-                                         selectionEnd - selectionStart));
-                  }
-                  continue;
-                }
-                if (key->keyCode == KeyX) {
-                  if (hasSelection) {
-                    hostPtr->setClipboardText(
-                        std::string_view(state.searchText.data() + selectionStart,
-                                         selectionEnd - selectionStart));
-                    deleteSelection();
-                    resetSearchBlink();
-                    markSearchDirty();
-                  }
-                  continue;
-                }
-                if (key->keyCode == KeyV) {
-                  auto size = hostPtr->clipboardTextSize();
-                  if (size && size.value() > 0u) {
-                    std::vector<char> bufferText(size.value());
-                    auto text = hostPtr->clipboardText(bufferText);
-                    if (text) {
-                      std::string paste(text.value());
-                      if (!paste.empty()) {
-                        deleteSelection();
-                        uint32_t cursor = std::min(state.searchCursor,
-                                                   static_cast<uint32_t>(state.searchText.size()));
-                        state.searchText.insert(cursor, paste);
-                        state.searchCursor = cursor + static_cast<uint32_t>(paste.size());
-                        clearSearchSelection(state, state.searchCursor);
-                        resetSearchBlink();
-                        markSearchDirty();
-                      }
-                    }
-                  }
-                  continue;
-                }
-              }
-              bool changed = false;
-              bool keepSelection = false;
-              uint32_t cursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
-              switch (key->keyCode) {
-                case KeyEscape:
-                  setSearchFocus(false, std::nullopt);
-                  continue;
-                case KeyLeft:
-                  if (shiftPressed) {
-                    if (!hasSelection) {
-                      state.searchSelectionAnchor = cursor;
-                    }
-                  cursor = PrimeStage::utf8Prev(state.searchText, cursor);
-                    state.searchSelectionStart = state.searchSelectionAnchor;
-                    state.searchSelectionEnd = cursor;
-                    keepSelection = true;
-                  } else {
-                  cursor = PrimeStage::utf8Prev(state.searchText, cursor);
-                    clearSearchSelection(state, cursor);
-                  }
-                  break;
-                case KeyRight:
-                  if (shiftPressed) {
-                    if (!hasSelection) {
-                      state.searchSelectionAnchor = cursor;
-                    }
-                  cursor = PrimeStage::utf8Next(state.searchText, cursor);
-                    state.searchSelectionStart = state.searchSelectionAnchor;
-                    state.searchSelectionEnd = cursor;
-                    keepSelection = true;
-                  } else {
-                  cursor = PrimeStage::utf8Next(state.searchText, cursor);
-                    clearSearchSelection(state, cursor);
-                  }
-                  break;
-                case KeyHome:
-                  if (shiftPressed) {
-                    if (!hasSelection) {
-                      state.searchSelectionAnchor = cursor;
-                    }
-                    cursor = 0u;
-                    state.searchSelectionStart = state.searchSelectionAnchor;
-                    state.searchSelectionEnd = cursor;
-                    keepSelection = true;
-                  } else {
-                    cursor = 0u;
-                    clearSearchSelection(state, cursor);
-                  }
-                  break;
-                case KeyEnd:
-                  if (shiftPressed) {
-                    if (!hasSelection) {
-                      state.searchSelectionAnchor = cursor;
-                    }
-                    cursor = static_cast<uint32_t>(state.searchText.size());
-                    state.searchSelectionStart = state.searchSelectionAnchor;
-                    state.searchSelectionEnd = cursor;
-                    keepSelection = true;
-                  } else {
-                    cursor = static_cast<uint32_t>(state.searchText.size());
-                    clearSearchSelection(state, cursor);
-                  }
-                  break;
-                case KeyBackspace:
-                  if (deleteSelection()) {
-                    changed = true;
-                    cursor = state.searchCursor;
-                  } else if (cursor > 0u) {
-                    uint32_t start = PrimeStage::utf8Prev(state.searchText, cursor);
-                    state.searchText.erase(start, cursor - start);
-                    cursor = start;
-                    changed = true;
-                  }
-                  break;
-                case KeyDelete:
-                  if (deleteSelection()) {
-                    changed = true;
-                    cursor = state.searchCursor;
-                  } else if (cursor < static_cast<uint32_t>(state.searchText.size())) {
-                    uint32_t end = PrimeStage::utf8Next(state.searchText, cursor);
-                    state.searchText.erase(cursor, end - cursor);
-                    changed = true;
-                  }
-                  break;
-                case KeyTab:
-                  setSearchFocus(false, std::nullopt);
-                  continue;
-                case KeyReturn:
-                  continue;
-                default:
-                  continue;
-              }
-              if (cursor != state.searchCursor || changed) {
-                state.searchCursor = cursor;
-                if (!keepSelection) {
-                  clearSearchSelection(state, cursor);
-                }
-                resetSearchBlink();
-                markSearchDirty();
-              }
               continue;
             }
             if (state.boardFocused) {
@@ -1886,7 +1639,8 @@ int main(int argc, char** argv) {
                 hostPtr->setRelativePointerCapture(surfaceId, relativePointer);
               } else if (key->keyCode == KeyI) {
                 cursorIBeam = !cursorIBeam;
-                bool useIBeam = cursorIBeam || state.searchHover || state.boardHover;
+                bool useIBeam = cursorIBeam || state.searchField.hovered || state.boardHover;
+                cursorIBeamActive = useIBeam;
                 hostPtr->setCursorShape(surfaceId, useIBeam ? CursorShape::IBeam : CursorShape::Arrow);
               } else if (key->keyCode == KeyC) {
                 hostPtr->setClipboardText("PrimeHost clipboard sample");
@@ -1917,29 +1671,27 @@ int main(int argc, char** argv) {
           }
         } else if (auto* text = std::get_if<TextEvent>(input)) {
           auto view = textFromSpan(batch, text->text);
-          if (state.searchFocused && view) {
-            std::string filtered;
-            filtered.reserve(view->size());
-            for (char ch : *view) {
-              if (ch != '\n' && ch != '\r') {
-                filtered.push_back(ch);
-              }
+          if (view) {
+            if (ui.needsRebuild) {
+              buildStudioUi(ui, state);
+              ui.needsRebuild = false;
+              ui.layoutDirty = true;
+              ui.renderDirty = true;
             }
-            if (!filtered.empty()) {
-              uint32_t selectionStart = 0u;
-              uint32_t selectionEnd = 0u;
-              bool hasSelection = hasSearchSelection(state, selectionStart, selectionEnd);
-              if (hasSelection) {
-                state.searchText.erase(selectionStart, selectionEnd - selectionStart);
-                state.searchCursor = selectionStart;
-                clearSearchSelection(state, state.searchCursor);
-              }
-              uint32_t cursor = std::min(state.searchCursor, static_cast<uint32_t>(state.searchText.size()));
-              state.searchText.insert(cursor, filtered);
-              state.searchCursor = cursor + static_cast<uint32_t>(filtered.size());
-              clearSearchSelection(state, state.searchCursor);
-              resetSearchBlink();
-              markSearchDirty();
+            if (ui.layoutDirty) {
+              PrimeFrame::LayoutOptions options;
+              options.rootWidth = ui.logicalWidth;
+              options.rootHeight = ui.logicalHeight;
+              ui.layoutEngine.layout(ui.frame, ui.layout, options);
+              ui.layoutDirty = false;
+            }
+            PrimeFrame::Event textEvent;
+            textEvent.type = PrimeFrame::EventType::TextInput;
+            textEvent.text = std::string(*view);
+            bool handled = ui.router.dispatch(textEvent, ui.frame, ui.layout, &ui.focus);
+            if (handled) {
+              ui.renderDirty = true;
+              markRenderDirty();
             }
           }
           if (view && !suppressEventLogs) {
